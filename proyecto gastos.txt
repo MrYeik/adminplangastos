@@ -1,0 +1,300 @@
+Objetivo
+
+Desarrollar una aplicación web para la administración y planificación financiera personal/familiar que permita registrar ingresos, gastos, préstamos, tarjetas de crédito y compromisos financieros, obteniendo una proyección mensual y anual de la economía familiar.
+
+El sistema deberá reemplazar completamente la planilla Excel actual, automatizando cálculos y facilitando la carga de información.
+
+1. Dashboard Principal
+
+Al ingresar al sistema deberá visualizarse un tablero con:
+
+Ingreso mensual.
+Total de gastos del mes.
+Dinero disponible.
+Total comprometido en cuotas.
+Próximos vencimientos.
+Gastos fijos.
+Gastos variables.
+Total de deuda pendiente.
+Gráfico de distribución de gastos.
+Evolución mensual.
+Comparación entre ingresos y gastos.
+
+2. Administración de ingresos
+
+Permitir registrar uno o varios ingresos.
+
+Campos:
+
+Descripción
+Categoría
+Fecha
+Importe
+Repetición mensual (Sí/No)
+Observaciones
+
+Ejemplos
+
+Sueldo
+Horas extras
+Aguinaldo
+Trabajo adicional
+Otros ingresos
+
+3. Gastos generales
+
+Registrar cualquier gasto.
+
+Campos
+
+Descripción
+Categoría
+Fecha
+Importe
+Medio de pago
+Responsable
+Observaciones
+Repetitivo mensual
+
+Categorías
+
+Vivienda
+Servicios
+Alimentación
+Transporte
+Salud
+Educación
+Seguros
+Entretenimiento
+Impuestos
+Otros
+
+4. Administración de tarjetas
+
+Cada tarjeta será independiente.
+
+Ejemplo
+
+Nativa
+Naranja
+Visa
+Mastercard
+
+Cada una deberá permitir registrar:
+
+Compra
+Fecha
+Comercio
+Cantidad de cuotas
+Cuota actual
+Importe por cuota
+Fecha de finalización
+Observaciones
+
+El sistema deberá generar automáticamente las cuotas restantes.
+
+Ejemplo
+
+Compra TV
+
+12 cuotas
+
+$50.000
+
+El sistema deberá distribuir automáticamente:
+
+Julio
+Agosto
+Septiembre
+...
+
+Hasta completar las 12 cuotas.
+
+Cuando finalicen, desaparecerán automáticamente de los meses futuros.
+
+5. Administración de préstamos
+
+Registrar préstamos personales.
+
+Campos
+
+Entidad
+Fecha
+Capital solicitado
+Cantidad de cuotas
+Valor de cuota
+Cuota actual
+Fecha de finalización
+
+La aplicación deberá calcular automáticamente:
+
+Cuotas restantes
+Total pendiente
+Próximo vencimiento
+
+6. Dinero prestado entre personas
+
+Equivale a la hoja "Prestado".
+
+Permitir registrar
+
+Persona
+Concepto
+Importe
+Fecha
+Estado
+
+Estados
+
+Pendiente
+Parcialmente pagado
+Cancelado
+
+7. Calendario financiero
+
+Vista mensual.
+
+Mostrar
+
+Cobro de sueldo.
+Vencimientos.
+Tarjetas.
+Préstamos.
+Servicios.
+Impuestos.
+
+Con colores diferentes.
+
+8. Presupuesto mensual
+
+Para cada mes mostrar:
+
+Ingresos
+
+↓
+
+Gastos Fijos
+
+↓
+
+Gastos Variables
+
+↓
+
+Cuotas
+
+↓
+
+Saldo Disponible
+
+Con comparación contra el presupuesto estimado.
+
+9. Proyección anual
+
+Visualizar de julio a junio.
+
+Cada columna representa un mes.
+
+Cada fila representa:
+
+Servicios
+Tarjetas
+Préstamos
+Gastos fijos
+Gastos variables
+Total mensual
+
+Debe actualizarse automáticamente.
+
+10. Reportes
+
+Generar reportes por:
+
+Mes
+Año
+Categoría
+Tarjeta
+Préstamo
+Persona
+
+Exportar a
+
+PDF
+Excel
+
+11. Búsquedas
+
+Buscar por
+
+Descripción
+Comercio
+Persona
+Tarjeta
+Categoría
+Fecha
+
+12. Recordatorios
+
+Enviar alertas cuando falten:
+
+10 días
+5 días
+2 días
+1 día
+
+Para
+
+Tarjetas
+Servicios
+Préstamos
+Impuestos
+
+14. Configuración
+
+Permitir configurar:
+
+Mes inicial del ejercicio financiero.
+Moneda.
+Colores.
+Categorías.
+Bancos.
+Tarjetas.
+Personas.
+Notificaciones.
+
+
+MAS FUNCIONES:
+
+Historial de cuotas
+
+Registrar automáticamente cuándo termina cada préstamo o compra en cuotas, eliminándola de las proyecciones futuras sin intervención manual.
+
+Calcular el saldo esperado para cada uno de los próximos 12 meses considerando ingresos, gastos fijos y cuotas pendientes.
+
+Centro de obligaciones
+
+Unificar en una sola vista todos los vencimientos de tarjetas, préstamos, servicios e impuestos.
+
+Indicadores financieros
+
+Mostrar métricas como:
+
+Porcentaje del sueldo comprometido.
+Capacidad de ahorro.
+Endeudamiento mensual.
+Gastos fijos vs. variables.
+Evolución del patrimonio.
+Escenarios financieros
+
+Simular cambios antes de comprometerse con una compra o préstamo, por ejemplo:
+
+"¿Qué ocurre si agrego un préstamo de $5.000.000 en 36 cuotas?"
+"¿Cómo cambia mi flujo de caja si aumento el sueldo un 10%?"
+
+Gestión documental
+
+Adjuntar comprobantes, resúmenes de tarjetas, facturas y contratos de préstamos en formato PDF o imagen.
+
+Importación automática
+
+Importar movimientos desde archivos CSV o Excel para evitar la carga manual.
