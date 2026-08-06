@@ -16,9 +16,10 @@ import Recordatorios from '@/pages/Recordatorios'
 import Busquedas from '@/pages/Busquedas'
 import Configuracion from '@/pages/Configuracion'
 
-// Páginas con dependencias pesadas (jspdf, xlsx) → se cargan bajo demanda.
+// Páginas con dependencias pesadas (jspdf, xlsx, pdfjs) → se cargan bajo demanda.
 const Reportes = lazy(() => import('@/pages/Reportes'))
 const Importar = lazy(() => import('@/pages/Importar'))
+const ImportarResumen = lazy(() => import('@/pages/ImportarResumen'))
 
 function Cargando() {
   return <div className="p-8 text-sm text-slate-400">Cargando…</div>
@@ -51,6 +52,7 @@ const router = createBrowserRouter([
       { path: 'recordatorios', element: <Recordatorios /> },
       { path: 'configuracion', element: <Configuracion /> },
       { path: 'importar', element: lazyEl(Importar) },
+      { path: 'importar-resumen', element: lazyEl(ImportarResumen) },
     ],
   },
 ])

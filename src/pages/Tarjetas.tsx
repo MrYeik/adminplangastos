@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Plus, Pencil, Trash2, CreditCard, ShoppingBag, CalendarClock } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Plus, Pencil, Trash2, CreditCard, ShoppingBag, CalendarClock, FileUp } from 'lucide-react'
 import PageShell from '@/components/PageShell'
 import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
@@ -115,9 +116,16 @@ export default function Tarjetas() {
       titulo="Tarjetas"
       descripcion="Compras en cuotas por tarjeta. Las cuotas se generan y vencen solas."
       acciones={
-        <Button onClick={nuevaTarjeta}>
-          <Plus size={18} /> Nueva tarjeta
-        </Button>
+        <div className="flex gap-2">
+          <Link to="/importar-resumen">
+            <Button variante="secondary">
+              <FileUp size={16} /> Importar resumen PDF
+            </Button>
+          </Link>
+          <Button onClick={nuevaTarjeta}>
+            <Plus size={18} /> Nueva tarjeta
+          </Button>
+        </div>
       }
     >
       {tarjetas.length === 0 ? (

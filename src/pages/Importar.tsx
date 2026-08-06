@@ -120,6 +120,24 @@ export default function Importar() {
         </div>
       )}
 
+      <Link
+        to="/importar-resumen"
+        className="mb-6 flex items-center justify-between rounded-xl border border-brand-200 bg-brand-50 p-4 transition-colors hover:bg-brand-100"
+      >
+        <span className="flex items-center gap-3">
+          <FileUp size={20} className="text-brand-600" />
+          <span>
+            <span className="block text-sm font-medium text-brand-800">
+              ¿Tenés el resumen de tu tarjeta en PDF?
+            </span>
+            <span className="block text-xs text-brand-700">
+              Importá los consumos de Tarjeta Naranja directamente desde el PDF.
+            </span>
+          </span>
+        </span>
+        <span className="text-sm font-medium text-brand-700">Ir →</span>
+      </Link>
+
       {/* Paso 1: destino + archivo */}
       <div className="mb-6 rounded-xl border border-slate-200 bg-white p-5">
         <div className="mb-4">
