@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   AlertTriangle,
   CreditCard,
-  Receipt,
   Check,
   Lock,
 } from 'lucide-react'
@@ -16,19 +15,11 @@ import Button from '@/components/ui/Button'
 import { Select, TextInput } from '@/components/ui/Form'
 import { db } from '@/db/db'
 import { comprasRepo } from '@/db/repos/tarjetas'
-import { gastosRepo } from '@/db/repos/gastos'
 import { extraerLineasPDF, PasswordRequeridaError } from '@/lib/pdfExtract'
 import { detectarResumen, type Consumo } from '@/lib/resumenes'
 import { fechaLegible } from '@/lib/dates'
 import { formatMoney } from '@/lib/money'
 import type { Tarjeta } from '@/models'
-
-function categoriaDe(detalle: string): string {
-  const d = detalle.toLowerCase()
-  if (/iva|percep|impuesto|sellos|arca|afip|db\.rg|rg \d/.test(d)) return 'Impuestos'
-  if (/seguro/.test(d)) return 'Seguros'
-  return 'Otros'
-}
 
 function esCompraEnCuotas(c: Consumo): boolean {
   return c.plan === 'cuotas' && (c.cuotaTotal ?? 0) > 1
@@ -45,7 +36,7 @@ export default function ImportarResumen() {
   const [incluidos, setIncluidos] = useState<boolean[]>([])
   const [error, setError] = useState<string | null>(null)
   const [cargando, setCargando] = useState(false)
-  const [importados, setImportados] = useState<{ compras: number; gastos: number } | null>(null)
+  const [importados, setImportados] = useState<{ total: number; enCuotas: number } | null>(null)
 
   // Contraseña del PDF
   const [passwordRequerida, setPasswordRequerida] = useState(false)
@@ -107,53 +98,42 @@ export default function ImportarResumen() {
   const toggle = (i: number) => setIncluidos((prev) => prev.map((v, j) => (j === i ? !v : v)))
 
   const resumen = useMemo(() => {
-    let compras = 0
-    let gastos = 0
     let total = 0
+    let cantidad = 0
+    let enCuotas = 0
     consumos.forEach((c, i) => {
       if (!incluidos[i] || c.moneda !== 'ARS') return
       total += c.importe
-      if (esCompraEnCuotas(c)) compras++
-      else gastos++
+      cantidad++
+      if (esCompraEnCuotas(c)) enCuotas++
     })
-    return { compras, gastos, total }
+    return { total, cantidad, enCuotas }
   }, [consumos, incluidos])
 
   const importar = async () => {
     if (tarjetaId === '') return
-    let compras = 0
-    let gastos = 0
+    let total = 0
+    let enCuotas = 0
     for (let i = 0; i < consumos.length; i++) {
       const c = consumos[i]
       if (!incluidos[i] || c.moneda !== 'ARS') continue
-      if (esCompraEnCuotas(c)) {
-        await comprasRepo.agregar({
-          tarjetaId: Number(tarjetaId),
-          descripcion: c.detalle,
-          comercio: c.detalle,
-          fechaCompra: c.fecha,
-          cantidadCuotas: c.cuotaTotal!,
-          cuotaActual: c.cuotaActual ?? 1,
-          importePorCuota: c.importe,
-          observaciones: `Importado del resumen (${banco})`,
-        })
-        compras++
-      } else {
-        await gastosRepo.agregar({
-          descripcion: c.detalle,
-          categoria: categoriaDe(c.detalle),
-          fecha: c.fecha,
-          importe: c.importe,
-          medioPago: 'Tarjeta de crédito',
-          responsable: '',
-          observaciones: `Importado del resumen (${banco})`,
-          repetitivoMensual: false,
-          tipo: 'variable',
-        })
-        gastos++
-      }
+      // Todos los consumos son movimientos de la tarjeta: los de un pago se
+      // cargan como compra de 1 cuota; los financiados, con sus cuotas.
+      const cuotas = esCompraEnCuotas(c)
+      await comprasRepo.agregar({
+        tarjetaId: Number(tarjetaId),
+        descripcion: c.detalle,
+        comercio: c.detalle,
+        fechaCompra: c.fecha,
+        cantidadCuotas: cuotas ? c.cuotaTotal! : 1,
+        cuotaActual: cuotas ? (c.cuotaActual ?? 1) : 1,
+        importePorCuota: c.importe,
+        observaciones: `Importado del resumen (${banco})`,
+      })
+      total++
+      if (cuotas) enCuotas++
     }
-    setImportados({ compras, gastos })
+    setImportados({ total, enCuotas })
     reset()
     setArchivo(null)
   }
@@ -174,7 +154,8 @@ export default function ImportarResumen() {
         <div className="mb-6 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">
           <CheckCircle2 size={22} />
           <span className="font-medium">
-            Listo: {importados.compras} compras en cuotas y {importados.gastos} gastos importados.
+            Listo: {importados.total} consumos cargados en la tarjeta
+            {importados.enCuotas > 0 ? ` (${importados.enCuotas} en cuotas)` : ''}.
           </span>
         </div>
       )}
@@ -268,13 +249,11 @@ export default function ImportarResumen() {
         <>
           <div className="mb-3 flex flex-wrap items-center gap-3 text-sm">
             <span className="inline-flex items-center gap-1 text-slate-600">
-              <CreditCard size={15} className="text-amber-600" /> {resumen.compras} compras en cuotas
-            </span>
-            <span className="inline-flex items-center gap-1 text-slate-600">
-              <Receipt size={15} className="text-rose-600" /> {resumen.gastos} gastos
+              <CreditCard size={15} className="text-amber-600" /> {resumen.cantidad} consumos a la tarjeta
+              {resumen.enCuotas > 0 ? ` (${resumen.enCuotas} en cuotas)` : ''}
             </span>
             <span className="text-slate-400">·</span>
-            <span className="font-medium text-slate-800">Total a importar: {formatMoney(resumen.total)}</span>
+            <span className="font-medium text-slate-800">Total: {formatMoney(resumen.total)}</span>
           </div>
 
           <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
@@ -322,8 +301,8 @@ export default function ImportarResumen() {
                             <CreditCard size={12} /> Compra {c.cuotaActual}/{c.cuotaTotal}
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-xs text-rose-700">
-                            <Receipt size={12} /> Gasto
+                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+                            <CreditCard size={12} /> 1 pago
                           </span>
                         )}
                       </td>
@@ -338,8 +317,8 @@ export default function ImportarResumen() {
           </div>
 
           <div className="mt-4 flex justify-end">
-            <Button onClick={importar} disabled={tarjetaId === '' || resumen.compras + resumen.gastos === 0}>
-              <Check size={16} /> Importar {resumen.compras + resumen.gastos} movimientos
+            <Button onClick={importar} disabled={tarjetaId === '' || resumen.cantidad === 0}>
+              <Check size={16} /> Importar {resumen.cantidad} consumos a la tarjeta
             </Button>
           </div>
           {tarjetaId === '' && (
