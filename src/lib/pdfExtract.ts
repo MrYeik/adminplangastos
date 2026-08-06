@@ -3,17 +3,41 @@
 
 import * as pdfjsLib from 'pdfjs-dist'
 import workerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import type { LineaPDF, CeldaTexto } from './parseResumenNaranja'
+import type { LineaPDF, CeldaTexto } from './resumenes/tipos'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc
 
-/** Lee un PDF y devuelve sus líneas (texto + celdas con posición x), por página. */
-export async function extraerLineasPDF(file: File): Promise<LineaPDF[]> {
-  const data = new Uint8Array(await file.arrayBuffer())
-  const loadingTask = pdfjsLib.getDocument({ data })
-  const doc = await loadingTask.promise
-  const lineas: LineaPDF[] = []
+/** El PDF está protegido con contraseña. `incorrecta` = se probó una y falló. */
+export class PasswordRequeridaError extends Error {
+  incorrecta: boolean
+  constructor(incorrecta: boolean) {
+    super(incorrecta ? 'Contraseña incorrecta' : 'El PDF requiere contraseña')
+    this.name = 'PasswordRequeridaError'
+    this.incorrecta = incorrecta
+  }
+}
 
+/**
+ * Lee un PDF y devuelve sus líneas (texto + celdas con posición x), por página.
+ * Si el PDF está protegido, lanza `PasswordRequeridaError`.
+ */
+export async function extraerLineasPDF(file: File, password?: string): Promise<LineaPDF[]> {
+  const data = new Uint8Array(await file.arrayBuffer())
+  const loadingTask = pdfjsLib.getDocument({ data, password })
+
+  let doc
+  try {
+    doc = await loadingTask.promise
+  } catch (e) {
+    const err = e as { name?: string; code?: number }
+    if (err?.name === 'PasswordException') {
+      // code 1 = falta contraseña; code 2 = contraseña incorrecta.
+      throw new PasswordRequeridaError(err.code === 2)
+    }
+    throw e
+  }
+
+  const lineas: LineaPDF[] = []
   for (let p = 1; p <= doc.numPages; p++) {
     const page = await doc.getPage(p)
     const tc = await page.getTextContent()

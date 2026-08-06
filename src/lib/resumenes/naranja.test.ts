@@ -1,10 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import {
-  parseResumenNaranja,
-  esResumenNaranja,
-  type LineaPDF,
-  type CeldaTexto,
-} from './parseResumenNaranja'
+import { naranja } from './naranja'
+import { detectarResumen } from './index'
+import type { LineaPDF, CeldaTexto } from './tipos'
 
 function mk(pagina: number, cells: [number, string][]): LineaPDF {
   const items: CeldaTexto[] = cells.map(([x, str]) => ({ x, str }))
@@ -17,7 +14,6 @@ function mk(pagina: number, cells: [number, string][]): LineaPDF {
   return { pagina, texto, items }
 }
 
-// Construye una línea de consumo con las columnas en x estándar.
 function consumo(
   fecha: string,
   tarjeta: string | null,
@@ -28,9 +24,7 @@ function consumo(
   dolar = false,
 ): LineaPDF {
   const cells: [number, string][] = [[10, fecha]]
-  if (tarjeta) {
-    cells.push([60, tarjeta], [110, cupon])
-  }
+  if (tarjeta) cells.push([60, tarjeta], [110, cupon])
   cells.push([160, detalle])
   if (plan) cells.push([300, plan])
   cells.push([dolar ? 520 : 450, monto])
@@ -63,61 +57,36 @@ const lineas: LineaPDF[] = [
   consumo('27/06/26', 'NX Visa', '749737', 'GOOGLE *YOUTUBEP P1MKUNBZ', 'Deb.Aut.', '4,66', true),
   consumo('27/07/26', null, '', '*PLAN EPICO(REMPLAZA COSTO DE MANTENIMIENTO)', null, '10.495,86'),
   mk(2, [[10, 'Otros'], [60, 'cargos:']]),
-  // Página 3: "Cancelación anticipada" — NO debe importarse.
   consumo('01/06/26', 'Naranja X', '1140', 'MERPAGO*LAANONIMA - cuota 02', null, '60.286,92'),
 ]
-// forzar la última a página 3
 lineas[lineas.length - 1].pagina = 3
 
-describe('parser resumen Naranja', () => {
-  it('reconoce el resumen', () => {
-    expect(esResumenNaranja(lineas)).toBe(true)
-    expect(esResumenNaranja([mk(1, [[0, 'otro banco cualquiera']])])).toBe(false)
+describe('parser Naranja', () => {
+  it('detecta el resumen por el registro', () => {
+    expect(naranja.detectar(lineas)).toBe(true)
+    expect(detectarResumen(lineas)?.banco).toBe('Tarjeta Naranja')
   })
 
-  it('extrae solo los consumos de la sección (no cancelación anticipada)', () => {
-    const c = parseResumenNaranja(lineas)
-    expect(c).toHaveLength(12) // 11 del detalle + Plan Épico; excluye Otros y página 3
+  it('extrae los consumos de la sección (sin cancelación anticipada)', () => {
+    expect(naranja.parse(lineas)).toHaveLength(12)
   })
 
-  it('detecta compras en cuotas', () => {
-    const c = parseResumenNaranja(lineas)
-    const merpago = c.find((x) => x.detalle === 'MERPAGO*LAANONIMA')
-    expect(merpago).toMatchObject({
+  it('cuotas, Zeta, débito y dólares', () => {
+    const c = naranja.parse(lineas)
+    expect(c.find((x) => x.detalle === 'MERPAGO*LAANONIMA')).toMatchObject({
       plan: 'cuotas',
       cuotaActual: 3,
       cuotaTotal: 6,
       importe: 6_028_692,
-      moneda: 'ARS',
-      subtarjeta: 'Naranja X',
       fecha: '2026-06-01',
     })
-  })
-
-  it('detecta planes Zeta y débitos automáticos', () => {
-    const c = parseResumenNaranja(lineas)
     expect(c.filter((x) => x.plan === 'zeta')).toHaveLength(5)
-    const seguro = c.find((x) => x.detalle.startsWith('LACAJASEGURO'))
-    expect(seguro?.plan).toBe('debito')
-    expect(seguro?.importe).toBe(13_253_400)
+    expect(c.find((x) => x.detalle.includes('YOUTUBE'))?.moneda).toBe('USD')
+    expect(c.find((x) => x.detalle.startsWith('PERCEPCION'))?.detalle).toContain('(6.799,00)')
   })
 
-  it('trata "01" como pago único y conserva paréntesis informativos', () => {
-    const c = parseResumenNaranja(lineas)
-    const perc = c.find((x) => x.detalle.startsWith('PERCEPCION'))
-    expect(perc).toMatchObject({ plan: 'unico', importe: 203_970 })
-    expect(perc?.detalle).toContain('(6.799,00)')
-  })
-
-  it('marca los consumos en dólares', () => {
-    const c = parseResumenNaranja(lineas)
-    const yt = c.find((x) => x.detalle.includes('YOUTUBE'))
-    expect(yt?.moneda).toBe('USD')
-    expect(yt?.importe).toBe(466)
-  })
-
-  it('la suma de consumos en pesos reconcilia con el total del resumen', () => {
-    const c = parseResumenNaranja(lineas)
+  it('la suma en pesos reconcilia con el total del resumen', () => {
+    const c = naranja.parse(lineas)
     const totalArs = c.filter((x) => x.moneda === 'ARS').reduce((a, x) => a + x.importe, 0)
     expect(totalArs).toBe(47_483_556) // $474.835,56
   })

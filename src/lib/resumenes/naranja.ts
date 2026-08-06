@@ -1,45 +1,14 @@
 // Parser del resumen de Tarjeta Naranja (Naranja X).
-// Trabaja sobre las líneas extraídas del PDF (texto + posición x de cada celda),
-// para poder distinguir la columna de pesos de la de dólares.
 
-export interface CeldaTexto {
-  x: number
-  str: string
-}
-
-export interface LineaPDF {
-  pagina: number
-  texto: string
-  items: CeldaTexto[]
-}
-
-export type PlanConsumo = 'cuotas' | 'zeta' | 'debito' | 'unico'
-
-export interface ConsumoNaranja {
-  fecha: string // ISO 'YYYY-MM-DD'
-  subtarjeta: string // 'Naranja X' | 'NX Visa' | ''
-  detalle: string
-  cuotaActual: number | null
-  cuotaTotal: number | null
-  plan: PlanConsumo
-  importe: number // centavos
-  moneda: 'ARS' | 'USD'
-}
-
-const RE_MONTO_PLANO = /^\d{1,3}(?:\.\d{3})*,\d{2}$/
-
-function aCentavos(s: string): number {
-  return Math.round(parseFloat(s.replace(/\./g, '').replace(',', '.')) * 100)
-}
-
-/** ¿Las líneas corresponden a un resumen de Tarjeta Naranja? */
-export function esResumenNaranja(lineas: LineaPDF[]): boolean {
-  const t = lineas
-    .map((l) => l.texto)
-    .join(' ')
-    .toLowerCase()
-  return t.includes('naranja') && t.includes('detalle de consumos')
-}
+import {
+  type BancoParser,
+  type LineaPDF,
+  type Consumo,
+  type PlanConsumo,
+  RE_MONTO_PLANO,
+  aCentavos,
+  textoPlano,
+} from './tipos'
 
 function encontrarHeader(lineas: LineaPDF[]): { idx: number; dolarColX: number } | null {
   for (let i = 0; i < lineas.length; i++) {
@@ -52,10 +21,9 @@ function encontrarHeader(lineas: LineaPDF[]): { idx: number; dolarColX: number }
   return null
 }
 
-// Marcadores que indican el fin de la sección de consumos.
 const RE_FIN = /^(otros|total|impuesto de sellos|iva operaciones|para que|pago del|cancelaci)/i
 
-function parseLinea(linea: LineaPDF, dolarColX: number): ConsumoNaranja | null {
+function parseLinea(linea: LineaPDF, dolarColX: number): Consumo | null {
   const m = linea.texto.match(/^(\d{2})\/(\d{2})\/(\d{2})\s+(.*)$/)
   if (!m) return null
   const [, dd, mm, yy, resto0] = m
@@ -72,12 +40,10 @@ function parseLinea(linea: LineaPDF, dolarColX: number): ConsumoNaranja | null {
   const moneda: 'ARS' | 'USD' = pesos.length ? 'ARS' : 'USD'
   const importe = aCentavos(item.str)
 
-  // Texto entre la fecha y el importe (saca el importe final).
   let mid = resto0
   const idx = mid.lastIndexOf(item.str)
   if (idx >= 0) mid = mid.slice(0, idx).trim()
 
-  // Sub-tarjeta + cupón (si aplica).
   let subtarjeta = ''
   const mt = mid.match(/^(Naranja X|NX Visa|NX Master(?:card)?|NX Amex)\s+(\S+)\s+(.*)$/)
   if (mt) {
@@ -85,7 +51,6 @@ function parseLinea(linea: LineaPDF, dolarColX: number): ConsumoNaranja | null {
     mid = mt[3]
   }
 
-  // Cuota / plan al final del detalle.
   let cuotaActual: number | null = null
   let cuotaTotal: number | null = null
   let plan: PlanConsumo = 'unico'
@@ -120,19 +85,25 @@ function parseLinea(linea: LineaPDF, dolarColX: number): ConsumoNaranja | null {
   }
 }
 
-/** Extrae los consumos de la sección "Detalle de Consumos" del resumen. */
-export function parseResumenNaranja(lineas: LineaPDF[]): ConsumoNaranja[] {
-  const header = encontrarHeader(lineas)
-  if (!header) return []
+export const naranja: BancoParser = {
+  nombre: 'Tarjeta Naranja',
 
-  const consumos: ConsumoNaranja[] = []
-  for (let i = header.idx + 1; i < lineas.length; i++) {
-    const linea = lineas[i]
-    // Solo consideramos la sección de consumos de la misma página del header.
-    if (linea.pagina !== lineas[header.idx].pagina) break
-    if (RE_FIN.test(linea.texto)) break
-    const c = parseLinea(linea, header.dolarColX)
-    if (c) consumos.push(c)
-  }
-  return consumos
+  detectar(lineas) {
+    const t = textoPlano(lineas)
+    return t.includes('naranja') && t.includes('detalle de consumos')
+  },
+
+  parse(lineas) {
+    const header = encontrarHeader(lineas)
+    if (!header) return []
+    const consumos: Consumo[] = []
+    for (let i = header.idx + 1; i < lineas.length; i++) {
+      const linea = lineas[i]
+      if (linea.pagina !== lineas[header.idx].pagina) break
+      if (RE_FIN.test(linea.texto)) break
+      const c = parseLinea(linea, header.dolarColX)
+      if (c) consumos.push(c)
+    }
+    return consumos
+  },
 }

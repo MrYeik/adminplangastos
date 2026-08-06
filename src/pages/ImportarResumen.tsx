@@ -9,32 +9,28 @@ import {
   CreditCard,
   Receipt,
   Check,
+  Lock,
 } from 'lucide-react'
 import PageShell from '@/components/PageShell'
 import Button from '@/components/ui/Button'
-import { Select } from '@/components/ui/Form'
+import { Select, TextInput } from '@/components/ui/Form'
 import { db } from '@/db/db'
 import { comprasRepo } from '@/db/repos/tarjetas'
 import { gastosRepo } from '@/db/repos/gastos'
-import { extraerLineasPDF } from '@/lib/pdfExtract'
-import {
-  parseResumenNaranja,
-  esResumenNaranja,
-  type ConsumoNaranja,
-} from '@/lib/parseResumenNaranja'
+import { extraerLineasPDF, PasswordRequeridaError } from '@/lib/pdfExtract'
+import { detectarResumen, type Consumo } from '@/lib/resumenes'
 import { fechaLegible } from '@/lib/dates'
 import { formatMoney } from '@/lib/money'
 import type { Tarjeta } from '@/models'
 
 function categoriaDe(detalle: string): string {
   const d = detalle.toLowerCase()
-  if (/iva|percep|impuesto|sellos|arca|afip/.test(d)) return 'Impuestos'
+  if (/iva|percep|impuesto|sellos|arca|afip|db\.rg|rg \d/.test(d)) return 'Impuestos'
   if (/seguro/.test(d)) return 'Seguros'
   return 'Otros'
 }
 
-/** ¿El consumo se carga como compra en cuotas? (si no, como gasto) */
-function esCompraEnCuotas(c: ConsumoNaranja): boolean {
+function esCompraEnCuotas(c: Consumo): boolean {
   return c.plan === 'cuotas' && (c.cuotaTotal ?? 0) > 1
 }
 
@@ -43,46 +39,72 @@ export default function ImportarResumen() {
   const tarjetas = useLiveQuery(() => db.tarjetas.toArray(), [], [] as Tarjeta[])
 
   const [tarjetaId, setTarjetaId] = useState<number | ''>('')
-  const [nombreArchivo, setNombreArchivo] = useState('')
-  const [consumos, setConsumos] = useState<ConsumoNaranja[]>([])
+  const [archivo, setArchivo] = useState<File | null>(null)
+  const [banco, setBanco] = useState('')
+  const [consumos, setConsumos] = useState<Consumo[]>([])
   const [incluidos, setIncluidos] = useState<boolean[]>([])
   const [error, setError] = useState<string | null>(null)
   const [cargando, setCargando] = useState(false)
   const [importados, setImportados] = useState<{ compras: number; gastos: number } | null>(null)
 
-  const onArchivo = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    if (!file) return
+  // Contraseña del PDF
+  const [passwordRequerida, setPasswordRequerida] = useState(false)
+  const [password, setPassword] = useState('')
+  const [passwordError, setPasswordError] = useState(false)
+
+  const reset = () => {
+    setConsumos([])
+    setIncluidos([])
+    setBanco('')
+    setError(null)
+    setPasswordRequerida(false)
+    setPassword('')
+    setPasswordError(false)
+  }
+
+  const procesar = async (file: File, pwd?: string) => {
+    setCargando(true)
     setError(null)
     setImportados(null)
-    setConsumos([])
-    setCargando(true)
     try {
-      const lineas = await extraerLineasPDF(file)
-      if (!esResumenNaranja(lineas)) {
-        setError('No parece un resumen de Tarjeta Naranja. Por ahora solo reconozco ese formato.')
+      const lineas = await extraerLineasPDF(file, pwd)
+      const detectado = detectarResumen(lineas)
+      if (!detectado) {
+        setError('No reconozco el formato de este resumen. Por ahora leo Tarjeta Naranja y Visa Nación.')
         setCargando(false)
         return
       }
-      const parsed = parseResumenNaranja(lineas)
-      if (parsed.length === 0) {
-        setError('No se encontraron consumos en el resumen.')
+      if (detectado.consumos.length === 0) {
+        setError('Detecté el resumen pero no encontré consumos.')
         setCargando(false)
         return
       }
-      setNombreArchivo(file.name)
-      setConsumos(parsed)
-      // Por defecto se incluyen los consumos en pesos; los de dólares no.
-      setIncluidos(parsed.map((c) => c.moneda === 'ARS'))
-    } catch {
-      setError('No se pudo leer el PDF. ¿Es un archivo válido?')
+      setPasswordRequerida(false)
+      setPassword('')
+      setBanco(detectado.banco)
+      setConsumos(detectado.consumos)
+      setIncluidos(detectado.consumos.map((c) => c.moneda === 'ARS'))
+    } catch (e) {
+      if (e instanceof PasswordRequeridaError) {
+        setPasswordRequerida(true)
+        setPasswordError(e.incorrecta)
+      } else {
+        setError('No se pudo leer el PDF. ¿Es un archivo válido?')
+      }
     }
     setCargando(false)
   }
 
-  const toggle = (i: number) =>
-    setIncluidos((prev) => prev.map((v, j) => (j === i ? !v : v)))
+  const onArchivo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    reset()
+    setArchivo(file)
+    await procesar(file)
+  }
+
+  const toggle = (i: number) => setIncluidos((prev) => prev.map((v, j) => (j === i ? !v : v)))
 
   const resumen = useMemo(() => {
     let compras = 0
@@ -113,7 +135,7 @@ export default function ImportarResumen() {
           cantidadCuotas: c.cuotaTotal!,
           cuotaActual: c.cuotaActual ?? 1,
           importePorCuota: c.importe,
-          observaciones: 'Importado del resumen',
+          observaciones: `Importado del resumen (${banco})`,
         })
         compras++
       } else {
@@ -124,7 +146,7 @@ export default function ImportarResumen() {
           importe: c.importe,
           medioPago: 'Tarjeta de crédito',
           responsable: '',
-          observaciones: 'Importado del resumen',
+          observaciones: `Importado del resumen (${banco})`,
           repetitivoMensual: false,
           tipo: 'variable',
         })
@@ -132,9 +154,8 @@ export default function ImportarResumen() {
       }
     }
     setImportados({ compras, gastos })
-    setConsumos([])
-    setIncluidos([])
-    setNombreArchivo('')
+    reset()
+    setArchivo(null)
   }
 
   const sinTarjetas = tarjetas.length === 0
@@ -142,7 +163,7 @@ export default function ImportarResumen() {
   return (
     <PageShell
       titulo="Importar resumen de tarjeta"
-      descripcion="Arrastrá el PDF del resumen de Tarjeta Naranja y cargá los consumos"
+      descripcion="Arrastrá el PDF del resumen (Tarjeta Naranja o Visa Nación) y cargá los consumos"
       acciones={
         <Link to="/importar">
           <Button variante="ghost">CSV / Excel</Button>
@@ -195,15 +216,50 @@ export default function ImportarResumen() {
           <Upload size={16} /> {cargando ? 'Leyendo…' : 'Seleccionar PDF'}
         </Button>
         <input ref={fileRef} type="file" accept="application/pdf,.pdf" hidden onChange={onArchivo} />
-        {nombreArchivo && (
+        {archivo && (
           <span className="ml-3 inline-flex items-center gap-1 text-sm text-slate-500">
-            <FileText size={14} /> {nombreArchivo} · {consumos.length} consumos
+            <FileText size={14} /> {archivo.name}
+            {banco && ` · ${banco} · ${consumos.length} consumos`}
           </span>
         )}
         {error && (
           <p className="mt-2 flex items-center gap-1 text-sm text-rose-600">
             <AlertTriangle size={15} /> {error}
           </p>
+        )}
+
+        {/* Contraseña del PDF */}
+        {passwordRequerida && (
+          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
+            <div className="mb-2 flex items-center gap-2 text-sm font-medium text-amber-800">
+              <Lock size={15} /> Este PDF está protegido con contraseña
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <TextInput
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && archivo && password) procesar(archivo, password)
+                }}
+                placeholder="Contraseña del resumen"
+                className="max-w-xs"
+                autoFocus
+              />
+              <Button
+                onClick={() => archivo && procesar(archivo, password)}
+                disabled={!password || cargando}
+              >
+                Descifrar
+              </Button>
+            </div>
+            {passwordError && (
+              <p className="mt-2 text-xs text-rose-600">Contraseña incorrecta, probá de nuevo.</p>
+            )}
+            <p className="mt-2 text-xs text-amber-700">
+              La contraseña se usa solo para abrir el PDF en tu navegador; no se guarda.
+            </p>
+          </div>
         )}
       </div>
 
@@ -237,12 +293,7 @@ export default function ImportarResumen() {
                   const esUSD = c.moneda === 'USD'
                   const compra = esCompraEnCuotas(c)
                   return (
-                    <tr
-                      key={i}
-                      className={`border-b border-slate-100 last:border-0 ${
-                        esUSD ? 'opacity-50' : ''
-                      }`}
-                    >
+                    <tr key={i} className={`border-b border-slate-100 last:border-0 ${esUSD ? 'opacity-50' : ''}`}>
                       <td className="px-3 py-2.5">
                         <input
                           type="checkbox"
@@ -256,7 +307,7 @@ export default function ImportarResumen() {
                       <td className="px-3 py-2.5">
                         <div className="font-medium text-slate-800">{c.detalle}</div>
                         <div className="text-xs text-slate-400">
-                          {c.subtarjeta || '—'}
+                          {c.subtarjeta || banco}
                           {c.plan === 'zeta' && ' · Plan Zeta'}
                           {c.plan === 'debito' && ' · Débito automático'}
                         </div>
