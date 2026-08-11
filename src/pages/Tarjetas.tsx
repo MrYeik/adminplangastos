@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Link } from 'react-router-dom'
 import {
@@ -12,6 +12,8 @@ import {
   Ban,
   Layers,
   Repeat,
+  ChevronRight,
+  ChevronDown,
 } from 'lucide-react'
 import PageShell from '@/components/PageShell'
 import Button from '@/components/ui/Button'
@@ -139,6 +141,16 @@ export default function Tarjetas() {
   const toggleServicioCompra = (c: CompraTarjeta) =>
     comprasRepo.actualizar(c.id!, { esServicio: !c.esServicio })
 
+  // --- filas de plan expandibles (desglose de lo unificado) ---
+  const [comprasAbiertas, setComprasAbiertas] = useState<Set<number>>(new Set())
+  const toggleAbierta = (id: number) =>
+    setComprasAbiertas((s) => {
+      const n = new Set(s)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+
   // --- unificar en un plan ---
   const [selUnif, setSelUnif] = useState<Set<number>>(new Set())
   const [unifOpen, setUnifOpen] = useState(false)
@@ -154,7 +166,11 @@ export default function Tarjetas() {
   const confirmarUnificar = async () => {
     if (seleccionada == null || selUnif.size < 2 || unifForm.cuotas < 1) return
     const elegidas = compras.filter((c) => c.id != null && selUnif.has(c.id))
-    const saldo = elegidas.reduce((a, c) => a + resumenCompra(c, mesRef).totalPendiente, 0)
+    const detalle = elegidas.map((c) => ({
+      descripcion: c.descripcion,
+      importe: resumenCompra(c, mesRef).totalPendiente,
+    }))
+    const saldo = detalle.reduce((a, x) => a + x.importe, 0)
     const conInteres = Math.round(saldo * (1 + unifForm.interes / 100))
     const importePorCuota = Math.round(conInteres / unifForm.cuotas)
     await comprasRepo.agregar({
@@ -166,6 +182,7 @@ export default function Tarjetas() {
       cuotaActual: 1,
       importePorCuota,
       observaciones: `Unificación de ${elegidas.length} compras${unifForm.interes ? ` (interés ${unifForm.interes}%)` : ''}`,
+      unificaDe: detalle,
     })
     // Finalizar las originales (sin cuotas futuras).
     for (const c of elegidas) {
@@ -201,8 +218,11 @@ export default function Tarjetas() {
           <tbody>
             {lista.map((c) => {
               const r = resumenCompra(c, mesRef)
+              const unificado = c.unificaDe && c.unificaDe.length > 0
+              const abierta = c.id != null && comprasAbiertas.has(c.id)
               return (
-                <tr key={c.id} className={`border-b border-slate-100 last:border-0 hover:bg-slate-50 ${!r.activa ? 'opacity-60' : ''}`}>
+                <Fragment key={c.id}>
+                <tr className={`border-b border-slate-100 hover:bg-slate-50 ${!r.activa ? 'opacity-60' : ''}`}>
                   {seleccionable && (
                     <td className="px-3 py-3">
                       <input
@@ -216,7 +236,21 @@ export default function Tarjetas() {
                   )}
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1.5 font-medium text-slate-800">
+                      {unificado && (
+                        <button
+                          onClick={() => toggleAbierta(c.id!)}
+                          className="text-slate-400 hover:text-slate-700"
+                          aria-label="Ver compras unificadas"
+                        >
+                          {abierta ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        </button>
+                      )}
                       {c.descripcion}
+                      {unificado && (
+                        <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] text-indigo-700">
+                          plan de {c.unificaDe!.length}
+                        </span>
+                      )}
                       {c.esServicio && (
                         <span className="inline-flex items-center gap-0.5 rounded bg-cyan-50 px-1.5 py-0.5 text-[10px] text-cyan-700">
                           <Repeat size={10} /> servicio
@@ -286,6 +320,18 @@ export default function Tarjetas() {
                     </div>
                   </td>
                 </tr>
+                {abierta &&
+                  c.unificaDe!.map((u, k) => (
+                    <tr key={k} className="border-b border-slate-50 bg-slate-50/40 text-xs">
+                      {seleccionable && <td></td>}
+                      <td className="px-4 py-1.5 pl-9 text-slate-500" colSpan={3}>
+                        {u.descripcion}
+                      </td>
+                      <td className="px-4 py-1.5 text-right tabular text-slate-500">{money(u.importe)}</td>
+                      <td colSpan={2}></td>
+                    </tr>
+                  ))}
+                </Fragment>
               )
             })}
           </tbody>

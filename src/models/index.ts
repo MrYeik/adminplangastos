@@ -48,6 +48,12 @@ export interface Tarjeta {
   color: string
 }
 
+/** Una compra que fue absorbida por un plan de unificación. */
+export interface CompraUnificada {
+  descripcion: string
+  importe: number // saldo pendiente que se unificó (centavos)
+}
+
 export interface CompraTarjeta {
   id?: ID
   tarjetaId: ID
@@ -60,6 +66,7 @@ export interface CompraTarjeta {
   observaciones?: string
   cuotasAdelantadas?: number // cuotas pagadas por adelantado (acortan el plan por el final)
   esServicio?: boolean // se refleja en la pestaña Servicios (sin duplicar valor)
+  unificaDe?: CompraUnificada[] // si es un plan, las compras que unificó
 }
 
 /** Un importe vigente a partir de un mes (para el historial de aumentos). */
@@ -80,10 +87,12 @@ export interface Servicio {
   categoria: string
   tarjetaId?: ID // adherido a una tarjeta (débito automático); si no, medio de pago
   medioPago?: string
+  alias?: string // alias/CBU para transferencia (si el medio de pago es transferencia)
   diaVencimiento: number // 1-31
   hasta?: string // 'YYYY-MM' mes de baja; sin valor = activo
   importes: ImporteVigente[] // historial de importes, ordenado por `desde`
   observaciones?: string
+  mesesPagados?: string[] // meses 'YYYY-MM' ya pagados
 }
 
 export type TipoAjustePrestamo = 'fijo' | 'uva'

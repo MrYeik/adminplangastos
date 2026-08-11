@@ -9,6 +9,8 @@ import {
   CreditCard,
   Ban,
   RotateCcw,
+  CheckCircle2,
+  Circle,
 } from 'lucide-react'
 import PageShell from '@/components/PageShell'
 import Button from '@/components/ui/Button'
@@ -40,6 +42,7 @@ interface FormState {
   enTarjeta: boolean
   tarjetaId: number | ''
   medioPago: string
+  alias: string
   diaVencimiento: number
   importeInicial: number
   mesInicio: string
@@ -52,6 +55,7 @@ const vacio = (categoria: string): FormState => ({
   enTarjeta: false,
   tarjetaId: '',
   medioPago: 'Débito',
+  alias: '',
   diaVencimiento: 10,
   importeInicial: 0,
   mesInicio: mesActual(),
@@ -99,6 +103,7 @@ export default function Servicios() {
       enTarjeta: s.tarjetaId != null,
       tarjetaId: s.tarjetaId ?? '',
       medioPago: s.medioPago ?? 'Débito',
+      alias: s.alias ?? '',
       diaVencimiento: s.diaVencimiento,
       importeInicial: primero?.importe ?? 0,
       mesInicio: primero?.desde ?? mes,
@@ -114,19 +119,29 @@ export default function Servicios() {
     const previos = editId != null ? servicios.find((s) => s.id === editId) : undefined
     const aumentos = previos ? importesOrdenados(previos).slice(1) : []
 
+    const esTransferencia = !form.enTarjeta && form.medioPago === 'Transferencia'
     const datos: Omit<Servicio, 'id'> = {
       descripcion: form.descripcion.trim(),
       categoria: form.categoria,
       tarjetaId: form.enTarjeta ? Number(form.tarjetaId) : undefined,
       medioPago: form.enTarjeta ? undefined : form.medioPago,
+      alias: esTransferencia && form.alias.trim() ? form.alias.trim() : undefined,
       diaVencimiento: Math.min(31, Math.max(1, form.diaVencimiento)),
       hasta: previos?.hasta,
       importes: [{ desde: form.mesInicio, importe: form.importeInicial }, ...aumentos],
       observaciones: form.observaciones || undefined,
+      mesesPagados: previos?.mesesPagados,
     }
     if (editId != null) await serviciosRepo.actualizar(editId, datos)
     else await serviciosRepo.agregar(datos)
     setForm(null)
+  }
+
+  const togglePagado = (s: Servicio) => {
+    const pagados = new Set(s.mesesPagados ?? [])
+    if (pagados.has(mes)) pagados.delete(mes)
+    else pagados.add(mes)
+    return serviciosRepo.actualizar(s.id!, { mesesPagados: [...pagados] })
   }
 
   const registrarAumento = async () => {
@@ -206,6 +221,7 @@ export default function Servicios() {
                 const activo = servicioActivoEnMes(s, mes)
                 const vig = activo ? importeServicioEnMes(s, mes) : importeActual(s)
                 const tieneAumentos = s.importes.length > 1
+                const pagado = (s.mesesPagados ?? []).includes(mes)
                 return (
                   <tr
                     key={s.id}
@@ -223,7 +239,10 @@ export default function Servicios() {
                           <CreditCard size={13} /> {nombreTarjeta.get(s.tarjetaId) ?? 'Tarjeta'}
                         </span>
                       ) : (
-                        s.medioPago
+                        <>
+                          <div>{s.medioPago}</div>
+                          {s.alias && <div className="text-xs text-slate-400">alias: {s.alias}</div>}
+                        </>
                       )}
                     </td>
                     <td className="px-4 py-3 text-slate-600">día {s.diaVencimiento}</td>
@@ -236,18 +255,35 @@ export default function Servicios() {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      {activo ? (
-                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
-                          Activo
-                        </span>
-                      ) : (
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
-                          Baja {s.hasta ? etiquetaMes(s.hasta) : ''}
-                        </span>
-                      )}
+                      <div className="flex flex-col gap-1">
+                        {activo ? (
+                          <span className="w-fit rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
+                            Activo
+                          </span>
+                        ) : (
+                          <span className="w-fit rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
+                            Baja {s.hasta ? etiquetaMes(s.hasta) : ''}
+                          </span>
+                        )}
+                        {pagado && (
+                          <span className="inline-flex w-fit items-center gap-0.5 rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
+                            <CheckCircle2 size={11} /> Pagado {etiquetaMes(mes)}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1">
+                        {activo && (
+                          <button
+                            onClick={() => togglePagado(s)}
+                            className={`rounded-lg p-1.5 hover:bg-emerald-50 hover:text-emerald-600 ${pagado ? 'text-emerald-600' : 'text-slate-400'}`}
+                            aria-label={pagado ? 'Marcar como impago' : 'Marcar como pagado'}
+                            title={pagado ? `Pagado en ${etiquetaMes(mes)} (tocá para desmarcar)` : `Marcar pagado en ${etiquetaMes(mes)}`}
+                          >
+                            {pagado ? <CheckCircle2 size={16} /> : <Circle size={16} />}
+                          </button>
+                        )}
                         <BotonAdjuntos entidadTipo="servicio" entidadId={s.id!} titulo={`Comprobantes · ${s.descripcion}`} />
                         <button
                           onClick={() => {
@@ -416,6 +452,16 @@ export default function Servicios() {
                 )}
               </div>
             </div>
+
+            {!form.enTarjeta && form.medioPago === 'Transferencia' && (
+              <Campo label="Alias / CBU para la transferencia">
+                <TextInput
+                  value={form.alias}
+                  onChange={(e) => setForm({ ...form, alias: e.target.value })}
+                  placeholder="Ej: netflix.mp o el CBU"
+                />
+              </Campo>
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <Campo label="Importe" requerido hint={editId != null ? 'Para subas, usá "registrar aumento"' : undefined}>
