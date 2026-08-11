@@ -19,7 +19,7 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import EmptyState from '@/components/ui/EmptyState'
 import MoneyInput from '@/components/ui/MoneyInput'
 import BotonAdjuntos from '@/components/BotonAdjuntos'
-import { Campo, TextInput, Select, Checkbox } from '@/components/ui/Form'
+import { Campo, TextInput, Select } from '@/components/ui/Form'
 import { serviciosRepo } from '@/db/repos/servicios'
 import { useConfigStore } from '@/store/configStore'
 import { db } from '@/db/db'
@@ -33,7 +33,7 @@ import {
   importesOrdenados,
 } from '@/lib/servicios'
 import { gastoAplicaAMes } from '@/lib/agregados'
-import { importeCuotaEnMes, mesInicioCompra, cuotasEfectivas } from '@/lib/cuotas'
+import { importeCompraEnMes } from '@/lib/cuotas'
 import type { Servicio, Tarjeta, Gasto, CompraTarjeta } from '@/models'
 
 interface FormState {
@@ -366,16 +366,21 @@ export default function Servicios() {
                 {comprasServicio.map((c) => (
                   <tr key={`c${c.id}`} className="border-b border-slate-100 last:border-0">
                     <td className="px-4 py-3">
-                      <div className="font-medium text-slate-800">{c.descripcion}</div>
-                      <div className="text-xs text-slate-400">{c.comercio}</div>
+                      <div className="flex items-center gap-1.5 font-medium text-slate-800">
+                        {c.descripcion}
+                        {c.servicioRecurrente && (
+                          <span className="inline-flex items-center gap-0.5 rounded bg-cyan-50 px-1.5 py-0.5 text-[10px] text-cyan-700">
+                            <Repeat size={10} /> recurrente
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-slate-400">{c.categoriaServicio || c.comercio}</div>
                     </td>
                     <td className="px-4 py-3">
                       <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">Tarjeta</span>
                     </td>
                     <td className="px-4 py-3 text-right tabular text-slate-700">
-                      {formatMoney(
-                        importeCuotaEnMes(mesInicioCompra(c), cuotasEfectivas(c), c.importePorCuota, mes),
-                      )}
+                      {formatMoney(importeCompraEnMes(c, mes))}
                     </td>
                   </tr>
                 ))}
@@ -420,40 +425,15 @@ export default function Servicios() {
               </Campo>
             </div>
 
-            <div className="rounded-lg border border-slate-200 p-3">
-              <Checkbox
-                label="Débito automático en una tarjeta de crédito"
-                checked={form.enTarjeta}
-                onChange={(e) => setForm({ ...form, enTarjeta: e.target.checked })}
-              />
-              <div className="mt-3">
-                {form.enTarjeta ? (
-                  tarjetas.length === 0 ? (
-                    <p className="text-xs text-amber-600">
-                      No tenés tarjetas cargadas. Creá una en la sección Tarjetas.
-                    </p>
-                  ) : (
-                    <Select
-                      value={form.tarjetaId}
-                      onChange={(e) => setForm({ ...form, tarjetaId: e.target.value === '' ? '' : Number(e.target.value) })}
-                    >
-                      <option value="">— elegí la tarjeta —</option>
-                      {tarjetas.map((t) => (
-                        <option key={t.id} value={t.id}>{t.nombre}{t.banco ? ` (${t.banco})` : ''}</option>
-                      ))}
-                    </Select>
-                  )
-                ) : (
-                  <Select value={form.medioPago} onChange={(e) => setForm({ ...form, medioPago: e.target.value })}>
-                    {mediosPago.map((m) => (
-                      <option key={m} value={m}>{m}</option>
-                    ))}
-                  </Select>
-                )}
-              </div>
-            </div>
+            <Campo label="Medio de pago" hint="Los débitos en tarjeta se importan desde la tarjeta.">
+              <Select value={form.medioPago} onChange={(e) => setForm({ ...form, medioPago: e.target.value })}>
+                {mediosPago.map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </Select>
+            </Campo>
 
-            {!form.enTarjeta && form.medioPago === 'Transferencia' && (
+            {form.medioPago === 'Transferencia' && (
               <Campo label="Alias / CBU para la transferencia">
                 <TextInput
                   value={form.alias}

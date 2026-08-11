@@ -48,6 +48,33 @@ export function fechaConDia(mes: string, dia: number): string {
   return `${mes}-${String(dd).padStart(2, '0')}`
 }
 
+/** Suma (o resta) días a una fecha ISO 'YYYY-MM-DD'. */
+export function sumarDiasISO(fechaISO: string, dias: number): string {
+  const [y, m, d] = fechaISO.split('-').map(Number)
+  const dt = new Date(y, m - 1, d + dias)
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(
+    dt.getDate(),
+  ).padStart(2, '0')}`
+}
+
+/**
+ * Período del resumen de una tarjeta que cierra en `mes`. Con día de cierre,
+ * va del día siguiente al cierre anterior hasta el cierre de este mes.
+ * Sin día de cierre, es el mes calendario.
+ */
+export function periodoResumen(
+  mes: string,
+  diaCierre?: number,
+): { desde: string; hasta: string; cierre: string } {
+  if (!diaCierre) {
+    const ult = fechaConDia(mes, diasDelMes(mes))
+    return { desde: fechaConDia(mes, 1), hasta: ult, cierre: ult }
+  }
+  const cierre = fechaConDia(mes, diaCierre)
+  const cierreAnterior = fechaConDia(sumarMeses(mes, -1), diaCierre)
+  return { desde: sumarDiasISO(cierreAnterior, 1), hasta: cierre, cierre }
+}
+
 /** Días de diferencia entre dos fechas ISO (b - a), sin corrimiento horario. */
 export function diasEntreISO(a: string, b: string): number {
   const [ay, am, ad] = a.split('-').map(Number)

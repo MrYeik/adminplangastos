@@ -181,6 +181,22 @@ export function resumenDesde(
   }
 }
 
+/**
+ * Importe de una compra en un mes. Si es servicio recurrente, se repite todos
+ * los meses desde la compra; si no, es la cuota de ese mes (0 fuera del rango).
+ */
+export function importeCompraEnMes(
+  compra: Pick<
+    CompraTarjeta,
+    'fechaCompra' | 'cantidadCuotas' | 'importePorCuota' | 'cuotasAdelantadas' | 'servicioRecurrente'
+  >,
+  mes: string,
+): number {
+  const inicio = mesInicioCompra(compra)
+  if (compra.servicioRecurrente) return mes >= inicio ? compra.importePorCuota : 0
+  return importeCuotaEnMes(inicio, cuotasEfectivas(compra), compra.importePorCuota, mes)
+}
+
 export function resumenCompra(
   compra: Pick<
     CompraTarjeta,

@@ -39,6 +39,7 @@ export interface Gasto {
   repetitivoMensual: boolean
   tipo: TipoGasto
   esServicio?: boolean // se refleja en la pestaña Servicios (sin duplicar valor)
+  mesesPagados?: string[] // meses 'YYYY-MM' marcados como pagados
 }
 
 export interface Tarjeta {
@@ -46,6 +47,8 @@ export interface Tarjeta {
   nombre: string
   banco?: string
   color: string
+  diaCierre?: number // día de cierre del resumen (1-31); define el período mensual
+  mesesPagados?: string[] // meses 'YYYY-MM' cuyo resumen está pagado
 }
 
 /** Una compra que fue absorbida por un plan de unificación. */
@@ -66,6 +69,8 @@ export interface CompraTarjeta {
   observaciones?: string
   cuotasAdelantadas?: number // cuotas pagadas por adelantado (acortan el plan por el final)
   esServicio?: boolean // se refleja en la pestaña Servicios (sin duplicar valor)
+  categoriaServicio?: string // categoría con la que se muestra en Servicios
+  servicioRecurrente?: boolean // se repite todos los meses (como un servicio)
   unificaDe?: CompraUnificada[] // si es un plan, las compras que unificó
 }
 

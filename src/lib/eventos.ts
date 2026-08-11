@@ -3,7 +3,7 @@
 
 import type { DatosFinancieros } from './agregados'
 import { ingresoAplicaAMes, gastoAplicaAMes } from './agregados'
-import { tieneCuotaEnMes, mesInicioCompra, cuotasEfectivas, importeCuotaPrestamoEnMes } from './cuotas'
+import { importeCompraEnMes, importeCuotaPrestamoEnMes } from './cuotas'
 import { importeServicioEnMes } from './servicios'
 import { diaDeFecha, fechaConDia, sumarMeses, diasEntreISO } from './dates'
 
@@ -69,14 +69,14 @@ export function eventosDelMes(d: DatosFinancieros, mes: string): EventoFinancier
   }
 
   for (const c of d.compras) {
-    const inicio = mesInicioCompra(c)
-    if (tieneCuotaEnMes(inicio, cuotasEfectivas(c), mes)) {
+    const imp = importeCompraEnMes(c, mes)
+    if (imp > 0) {
       eventos.push({
         fecha: fechaConDia(mes, diaDeFecha(c.fechaCompra)),
         tipo: 'tarjeta',
         titulo: c.descripcion,
         detalle: c.comercio,
-        importe: c.importePorCuota,
+        importe: imp,
       })
     }
   }

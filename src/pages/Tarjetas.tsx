@@ -14,6 +14,8 @@ import {
   Repeat,
   ChevronRight,
   ChevronDown,
+  CheckCircle2,
+  Circle,
 } from 'lucide-react'
 import PageShell from '@/components/PageShell'
 import Button from '@/components/ui/Button'
@@ -21,14 +23,16 @@ import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import EmptyState from '@/components/ui/EmptyState'
 import MoneyInput from '@/components/ui/MoneyInput'
-import { Campo, TextInput } from '@/components/ui/Form'
+import { Campo, TextInput, Select, Checkbox } from '@/components/ui/Form'
 import BotonAdjuntos from '@/components/BotonAdjuntos'
+import MonthNav from '@/components/ui/MonthNav'
 import { tarjetasRepo, comprasRepo } from '@/db/repos/tarjetas'
 import { serviciosRepo } from '@/db/repos/servicios'
 import { useConfigStore } from '@/store/configStore'
-import { hoyISO, fechaLegible, etiquetaMes, mesActual } from '@/lib/dates'
-import { resumenCompra, mesInicioCompra, nroCuotaEnMes } from '@/lib/cuotas'
+import { hoyISO, fechaLegible, etiquetaMes, mesActual, periodoResumen } from '@/lib/dates'
+import { resumenCompra, mesInicioCompra, nroCuotaEnMes, importeCompraEnMes } from '@/lib/cuotas'
 import { serviciosDeTarjetaEnMes } from '@/lib/servicios'
+import { estaPagado, togglePagoMes } from '@/lib/pagos'
 import type { Tarjeta, CompraTarjeta, Servicio } from '@/models'
 
 const COLORES = [
@@ -57,6 +61,7 @@ export default function Tarjetas() {
   const servicios = useLiveQuery(() => serviciosRepo.todos(), [], [] as Servicio[])
 
   const [seleccionada, setSeleccionada] = useState<number | null>(null)
+  const [mesDetalle, setMesDetalle] = useState(mesActual())
 
   // Formularios de tarjeta
   const [formTarjeta, setFormTarjeta] = useState<Omit<Tarjeta, 'id'> | null>(null)
@@ -73,8 +78,18 @@ export default function Tarjetas() {
   // Total pendiente comprometido por tarjeta (desde el mes actual)
   const pendientePorTarjeta = (tarjetaId: number) =>
     compras
-      .filter((c) => c.tarjetaId === tarjetaId)
+      .filter((c) => c.tarjetaId === tarjetaId && !c.servicioRecurrente)
       .reduce((acc, c) => acc + resumenCompra(c, mesRef).totalPendiente, 0)
+
+  // Total que se debita a la tarjeta en un mes (cuotas + servicios adheridos).
+  const totalTarjetaMes = (tarjetaId: number, mes: string) =>
+    compras
+      .filter((c) => c.tarjetaId === tarjetaId)
+      .reduce((acc, c) => acc + importeCompraEnMes(c, mes), 0) +
+    serviciosDeTarjetaEnMes(servicios, tarjetaId, mes)
+
+  const toggleTarjetaPagada = (t: Tarjeta, mes: string) =>
+    tarjetasRepo.actualizar(t.id!, { mesesPagados: togglePagoMes(t.mesesPagados, mes) })
 
   const tarjetaSel = tarjetas.find((t) => t.id === seleccionada) ?? null
   const comprasSel = compras.filter((c) => c.tarjetaId === seleccionada)
@@ -86,7 +101,7 @@ export default function Tarjetas() {
   }
   const editarTarjeta = (t: Tarjeta) => {
     setEditTarjetaId(t.id!)
-    setFormTarjeta({ nombre: t.nombre, banco: t.banco, color: t.color })
+    setFormTarjeta({ nombre: t.nombre, banco: t.banco, color: t.color, diaCierre: t.diaCierre })
   }
   const guardarTarjeta = async () => {
     if (!formTarjeta || !formTarjeta.nombre.trim()) return
@@ -193,8 +208,12 @@ export default function Tarjetas() {
     setUnifOpen(false)
   }
 
-  const activas = comprasSel.filter((c) => resumenCompra(c, mesRef).activa)
-  const finalizadas = comprasSel.filter((c) => !resumenCompra(c, mesRef).activa)
+  const activas = comprasSel.filter((c) => c.servicioRecurrente || resumenCompra(c, mesRef).activa)
+  const finalizadas = comprasSel.filter((c) => !c.servicioRecurrente && !resumenCompra(c, mesRef).activa)
+
+  const periodoDetalle = tarjetaSel ? periodoResumen(mesDetalle, tarjetaSel.diaCierre) : null
+  const totalPeriodo = tarjetaSel ? totalTarjetaMes(tarjetaSel.id!, mesDetalle) : 0
+  const pagadoPeriodo = tarjetaSel ? estaPagado(tarjetaSel.mesesPagados, mesDetalle) : false
 
   const tablaCompras = (lista: CompraTarjeta[], titulo: string, seleccionable: boolean) => (
     <div className="mt-4">
@@ -263,11 +282,17 @@ export default function Tarjetas() {
                   </td>
                   <td className="px-4 py-3">
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                      {r.activa ? `${r.cuotaActual} de ${r.cantidadCuotas}` : 'Finalizada'}
+                      {c.servicioRecurrente
+                        ? 'Recurrente'
+                        : r.activa
+                          ? `${r.cuotaActual} de ${r.cantidadCuotas}`
+                          : 'Finalizada'}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right tabular text-slate-700">{money(c.importePorCuota)}</td>
-                  <td className="px-4 py-3 text-right font-medium tabular text-slate-900">{money(r.totalPendiente)}</td>
+                  <td className="px-4 py-3 text-right font-medium tabular text-slate-900">
+                    {c.servicioRecurrente ? `${money(c.importePorCuota)}/mes` : money(r.totalPendiente)}
+                  </td>
                   <td className="px-4 py-3 text-slate-600">
                     {r.proximoVencimiento ? (
                       <span className="inline-flex items-center gap-1">
@@ -375,7 +400,8 @@ export default function Tarjetas() {
             const activas = compras.filter(
               (c) => c.tarjetaId === t.id && resumenCompra(c, mesRef).activa,
             ).length
-            const debitos = serviciosDeTarjetaEnMes(servicios, t.id!, mesRef)
+            const totalMes = totalTarjetaMes(t.id!, mesRef)
+            const pagadoMes = estaPagado(t.mesesPagados, mesRef)
             return (
               <button
                 key={t.id}
@@ -417,16 +443,31 @@ export default function Tarjetas() {
                 <div className="mt-4 text-lg font-semibold">{t.nombre}</div>
                 {t.banco && <div className="text-sm opacity-80">{t.banco}</div>}
                 <div className="mt-4 border-t border-white/25 pt-3">
-                  <div className="text-xs opacity-80">Comprometido pendiente</div>
-                  <div className="text-xl font-bold tabular">{money(pendiente)}</div>
-                  <div className="text-xs opacity-80">
-                    {activas} {activas === 1 ? 'compra activa' : 'compras activas'}
-                  </div>
-                  {debitos > 0 && (
-                    <div className="mt-1 text-xs opacity-90">
-                      + {money(debitos)}/mes en débitos automáticos
+                  <div className="flex items-end justify-between gap-2">
+                    <div>
+                      <div className="text-xs opacity-80">Este mes ({etiquetaMes(mesRef)})</div>
+                      <div className="text-2xl font-bold tabular">{money(totalMes)}</div>
                     </div>
-                  )}
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        toggleTarjetaPagada(t, mesRef)
+                      }}
+                      className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${
+                        pagadoMes ? 'bg-white/90 text-emerald-700' : 'bg-white/25 hover:bg-white/40'
+                      }`}
+                      title={pagadoMes ? 'Pagado (tocá para desmarcar)' : 'Marcar como pagado'}
+                    >
+                      {pagadoMes ? <CheckCircle2 size={13} /> : <Circle size={13} />}
+                      {pagadoMes ? 'Pagado' : 'Pagar'}
+                    </span>
+                  </div>
+                  <div className="mt-2 text-xs opacity-80">
+                    Pendiente {money(pendiente)} · {activas}{' '}
+                    {activas === 1 ? 'compra activa' : 'compras activas'}
+                  </div>
                 </div>
               </button>
             )
@@ -452,6 +493,37 @@ export default function Tarjetas() {
               </Button>
             </div>
           </div>
+
+          {/* Resumen del período (mes) */}
+          {periodoDetalle && (
+            <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-slate-500">
+                    Resumen de {etiquetaMes(mesDetalle, true)}
+                  </div>
+                  <div className="text-sm text-slate-600">
+                    Período: {fechaLegible(periodoDetalle.desde)} — {fechaLegible(periodoDetalle.hasta)}
+                    {tarjetaSel.diaCierre ? ` · cierre ${fechaLegible(periodoDetalle.cierre)}` : ''}
+                  </div>
+                </div>
+                <MonthNav mes={mesDetalle} onCambiar={setMesDetalle} />
+              </div>
+              <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
+                <div>
+                  <div className="text-xs text-slate-500">Total del período</div>
+                  <div className="text-xl font-bold tabular text-slate-900">{money(totalPeriodo)}</div>
+                </div>
+                <Button
+                  variante={pagadoPeriodo ? 'secondary' : 'primary'}
+                  onClick={() => toggleTarjetaPagada(tarjetaSel, mesDetalle)}
+                >
+                  {pagadoPeriodo ? <CheckCircle2 size={16} /> : <Circle size={16} />}
+                  {pagadoPeriodo ? 'Pagado' : 'Marcar pagado'}
+                </Button>
+              </div>
+            </div>
+          )}
 
           {comprasSel.length === 0 ? (
             <EmptyState
@@ -502,6 +574,21 @@ export default function Tarjetas() {
                   <option key={b} value={b} />
                 ))}
               </datalist>
+            </Campo>
+            <Campo label="Día de cierre del resumen" hint="Opcional. Define el período mensual.">
+              <TextInput
+                type="number"
+                min={1}
+                max={31}
+                value={formTarjeta.diaCierre ?? ''}
+                onChange={(e) =>
+                  setFormTarjeta({
+                    ...formTarjeta,
+                    diaCierre: e.target.value === '' ? undefined : Number(e.target.value),
+                  })
+                }
+                placeholder="Ej: 25"
+              />
             </Campo>
             <Campo label="Color">
               <div className="flex flex-wrap gap-2">
@@ -605,6 +692,35 @@ export default function Tarjetas() {
                 placeholder="Opcional"
               />
             </Campo>
+
+            <div className="rounded-lg border border-slate-200 p-3">
+              <Checkbox
+                label="Es un servicio (mostrarlo en la pestaña Servicios)"
+                checked={formCompra.esServicio ?? false}
+                onChange={(e) => setFormCompra({ ...formCompra, esServicio: e.target.checked })}
+              />
+              {formCompra.esServicio && (
+                <div className="mt-3 grid grid-cols-2 gap-4">
+                  <Campo label="Categoría">
+                    <Select
+                      value={formCompra.categoriaServicio ?? (config?.categorias?.[0] ?? 'Servicios')}
+                      onChange={(e) => setFormCompra({ ...formCompra, categoriaServicio: e.target.value })}
+                    >
+                      {(config?.categorias ?? []).map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </Select>
+                  </Campo>
+                  <div className="flex items-end pb-2">
+                    <Checkbox
+                      label="Se repite todos los meses"
+                      checked={formCompra.servicioRecurrente ?? false}
+                      onChange={(e) => setFormCompra({ ...formCompra, servicioRecurrente: e.target.checked })}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
 
             <div className="flex justify-end gap-2 pt-2">
               <Button variante="secondary" onClick={() => setFormCompra(null)}>

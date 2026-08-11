@@ -1,17 +1,20 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Plus, Pencil, Trash2, Receipt, Repeat } from 'lucide-react'
+import { Plus, Pencil, Trash2, Receipt, Repeat, CheckCircle2, Circle } from 'lucide-react'
 import PageShell from '@/components/PageShell'
 import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import EmptyState from '@/components/ui/EmptyState'
 import MoneyInput from '@/components/ui/MoneyInput'
+import MonthNav from '@/components/ui/MonthNav'
 import { Campo, TextInput, Select, Checkbox } from '@/components/ui/Form'
 import BotonAdjuntos from '@/components/BotonAdjuntos'
 import { gastosRepo } from '@/db/repos/gastos'
 import { useConfigStore } from '@/store/configStore'
-import { hoyISO, fechaLegible } from '@/lib/dates'
+import { gastoAplicaAMes } from '@/lib/agregados'
+import { estaPagado, togglePagoMes } from '@/lib/pagos'
+import { hoyISO, fechaLegible, mesActual } from '@/lib/dates'
 import type { Gasto, TipoGasto } from '@/models'
 
 const VACIO: Omit<Gasto, 'id'> = {
@@ -40,9 +43,13 @@ export default function Gastos() {
   const [editId, setEditId] = useState<number | null>(null)
   const [aBorrar, setABorrar] = useState<Gasto | null>(null)
   const [filtroTipo, setFiltroTipo] = useState<'todos' | TipoGasto>('todos')
+  const [mes, setMes] = useState(mesActual())
 
   const categorias = config?.categorias ?? []
   const mediosPago = config?.mediosPago ?? []
+
+  const togglePagado = (g: Gasto) =>
+    gastosRepo.actualizar(g.id!, { mesesPagados: togglePagoMes(g.mesesPagados, mes) })
 
   const abrirNuevo = () => {
     setEditId(null)
@@ -61,44 +68,46 @@ export default function Gastos() {
     cerrar()
   }
 
-  const visibles = gastos.filter((g) => filtroTipo === 'todos' || g.tipo === filtroTipo)
-  const totalFijos = gastos.filter((g) => g.tipo === 'fijo').reduce((a, g) => a + g.importe, 0)
-  const totalVariables = gastos
-    .filter((g) => g.tipo === 'variable')
+  // Gastos que corresponden al mes seleccionado (recurrentes + los del mes).
+  const gastosDelMes = gastos.filter((g) => gastoAplicaAMes(g, mes))
+  const visibles = gastosDelMes.filter((g) => filtroTipo === 'todos' || g.tipo === filtroTipo)
+  const total = gastosDelMes.reduce((a, g) => a + g.importe, 0)
+  const pagado = gastosDelMes
+    .filter((g) => estaPagado(g.mesesPagados, mes))
     .reduce((a, g) => a + g.importe, 0)
+  const falta = total - pagado
 
   return (
     <PageShell
       titulo="Gastos"
-      descripcion="Gastos fijos y variables por categoría"
+      descripcion="Lo gastado, pagado y lo que falta pagar, mes a mes"
       acciones={
-        <Button onClick={abrirNuevo}>
-          <Plus size={18} /> Nuevo gasto
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <MonthNav mes={mes} onCambiar={setMes} />
+          <Button onClick={abrirNuevo}>
+            <Plus size={18} /> Nuevo gasto
+          </Button>
+        </div>
       }
     >
-      {gastos.length > 0 && (
-        <div className="mb-5 grid grid-cols-3 gap-4 sm:max-w-2xl">
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <div className="text-xs text-slate-500">Total</div>
-            <div className="mt-1 text-xl font-bold text-rose-600 tabular">
-              {money(totalFijos + totalVariables)}
-            </div>
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <div className="text-xs text-slate-500">Fijos</div>
-            <div className="mt-1 text-xl font-bold text-indigo-600 tabular">{money(totalFijos)}</div>
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <div className="text-xs text-slate-500">Variables</div>
-            <div className="mt-1 text-xl font-bold text-amber-600 tabular">
-              {money(totalVariables)}
-            </div>
+      <div className="mb-5 grid grid-cols-3 gap-4 sm:max-w-2xl">
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="text-xs text-slate-500">Total</div>
+          <div className="mt-1 text-xl font-bold text-slate-800 tabular">{money(total)}</div>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="text-xs text-slate-500">Pagados</div>
+          <div className="mt-1 text-xl font-bold text-emerald-600 tabular">{money(pagado)}</div>
+        </div>
+        <div className={`rounded-xl border p-4 ${falta > 0 ? 'border-rose-200 bg-rose-50' : 'border-slate-200 bg-white'}`}>
+          <div className="text-xs text-slate-500">Falta pagar</div>
+          <div className={`mt-1 text-xl font-bold tabular ${falta > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+            {money(falta)}
           </div>
         </div>
-      )}
+      </div>
 
-      {gastos.length > 0 && (
+      {gastosDelMes.length > 0 && (
         <div className="mb-3 flex gap-1">
           {(['todos', 'fijo', 'variable'] as const).map((t) => (
             <button
@@ -116,11 +125,11 @@ export default function Gastos() {
         </div>
       )}
 
-      {gastos.length === 0 ? (
+      {gastosDelMes.length === 0 ? (
         <EmptyState
           icon={Receipt}
-          titulo="Todavía no hay gastos"
-          descripcion="Registrá tus gastos fijos y variables."
+          titulo="Sin gastos este mes"
+          descripcion="No hay gastos para el mes seleccionado."
           accion={
             <Button onClick={abrirNuevo}>
               <Plus size={18} /> Nuevo gasto
@@ -132,6 +141,7 @@ export default function Gastos() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                <th className="px-4 py-3 font-medium">Pago</th>
                 <th className="px-4 py-3 font-medium">Descripción</th>
                 <th className="px-4 py-3 font-medium">Categoría</th>
                 <th className="px-4 py-3 font-medium">Tipo</th>
@@ -141,8 +151,20 @@ export default function Gastos() {
               </tr>
             </thead>
             <tbody>
-              {visibles.map((g) => (
-                <tr key={g.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+              {visibles.map((g) => {
+                const gpagado = estaPagado(g.mesesPagados, mes)
+                return (
+                <tr key={g.id} className={`border-b border-slate-100 last:border-0 hover:bg-slate-50 ${gpagado ? 'bg-emerald-50/30' : ''}`}>
+                  <td className="px-4 py-3">
+                    <button
+                      onClick={() => togglePagado(g)}
+                      className={`rounded-lg p-1 hover:bg-emerald-50 hover:text-emerald-600 ${gpagado ? 'text-emerald-600' : 'text-slate-300'}`}
+                      aria-label={gpagado ? 'Marcar impago' : 'Marcar pagado'}
+                      title={gpagado ? 'Pagado (tocá para desmarcar)' : 'Marcar como pagado'}
+                    >
+                      {gpagado ? <CheckCircle2 size={18} /> : <Circle size={18} />}
+                    </button>
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2 font-medium text-slate-800">
                       {g.descripcion}
@@ -189,7 +211,8 @@ export default function Gastos() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table>
         </div>

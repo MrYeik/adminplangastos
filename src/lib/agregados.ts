@@ -4,13 +4,12 @@
 import type { Ingreso, Gasto, CompraTarjeta, Prestamo, Servicio, TipoGasto } from '@/models'
 import { mesDeFecha } from './dates'
 import {
-  importeCuotaEnMes,
   importeCuotaPrestamoEnMes,
-  cuotasEfectivas,
-  mesInicioCompra,
+  importeCompraEnMes,
   resumenCompra,
   resumenPrestamo,
 } from './cuotas'
+import { estaPagado } from './pagos'
 import { importeServicioEnMes, serviciosDelMes } from './servicios'
 
 export interface DatosFinancieros {
@@ -44,11 +43,14 @@ export function gastosDelMes(gastos: Gasto[], mes: string, tipo?: TipoGasto): nu
 }
 
 export function cuotasTarjetaDelMes(compras: CompraTarjeta[], mes: string): number {
-  return compras.reduce(
-    (a, c) =>
-      a + importeCuotaEnMes(mesInicioCompra(c), cuotasEfectivas(c), c.importePorCuota, mes),
-    0,
-  )
+  return compras.reduce((a, c) => a + importeCompraEnMes(c, mes), 0)
+}
+
+/** Total de gastos del mes ya marcados como pagados. */
+export function gastosPagadosDelMes(gastos: Gasto[], mes: string): number {
+  return gastos
+    .filter((g) => gastoAplicaAMes(g, mes) && estaPagado(g.mesesPagados, mes))
+    .reduce((a, g) => a + g.importe, 0)
 }
 
 export function cuotasPrestamoDelMes(prestamos: Prestamo[], mes: string): number {
@@ -136,9 +138,7 @@ export function desgloseProyeccion(
   }
   for (const t of tarjetas) {
     const suyas = d.compras.filter((c) => c.tarjetaId === t.id)
-    const vals = meses.map((m) =>
-      suyas.reduce((a, c) => a + importeCuotaEnMes(mesInicioCompra(c), cuotasEfectivas(c), c.importePorCuota, m), 0),
-    )
+    const vals = meses.map((m) => suyas.reduce((a, c) => a + importeCompraEnMes(c, m), 0))
     if (conValor(vals)) desg.cuotasTarjeta.push(fila(t.nombre, vals))
   }
   for (const p of d.prestamos) {
@@ -186,7 +186,9 @@ export function deudaPendiente(
   prestamos: Prestamo[],
   mesRef: string,
 ): number {
-  const t = compras.reduce((a, c) => a + resumenCompra(c, mesRef).totalPendiente, 0)
+  const t = compras
+    .filter((c) => !c.servicioRecurrente)
+    .reduce((a, c) => a + resumenCompra(c, mesRef).totalPendiente, 0)
   const p = prestamos.reduce((a, pr) => a + resumenPrestamo(pr, mesRef).totalPendiente, 0)
   return t + p
 }
