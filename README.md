@@ -1,4 +1,4 @@
-# GASTOS — Finanzas del hogar
+# Aura+ — Finanzas del Hogar
 
 Aplicación web para la administración y planificación financiera personal/familiar.
 Registra ingresos, gastos, tarjetas, préstamos y compromisos, y arma automáticamente

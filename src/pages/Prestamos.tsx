@@ -7,7 +7,7 @@ import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import EmptyState from '@/components/ui/EmptyState'
 import MoneyInput from '@/components/ui/MoneyInput'
-import { Campo, TextInput } from '@/components/ui/Form'
+import { Campo, TextInput, Select } from '@/components/ui/Form'
 import BotonAdjuntos from '@/components/BotonAdjuntos'
 import { prestamosRepo } from '@/db/repos/prestamos'
 import { useConfigStore } from '@/store/configStore'
@@ -23,6 +23,8 @@ const VACIO: Omit<Prestamo, 'id'> = {
   valorCuota: 0,
   cuotaActual: 1,
   observaciones: '',
+  tipoAjuste: 'fijo',
+  ajusteMensualPct: 0,
 }
 
 export default function Prestamos() {
@@ -45,7 +47,9 @@ export default function Prestamos() {
   const guardar = async () => {
     if (!form || !form.entidad.trim() || form.valorCuota <= 0 || form.cantidadCuotas < 1) return
     const cuotaActual = nroCuotaEnMes(mesInicioPrestamo(form), form.cantidadCuotas, mesRef)
-    const datos = { ...form, cuotaActual }
+    // Para UVA, la cuota cargada es la del mes actual.
+    const mesReferenciaAjuste = form.tipoAjuste === 'uva' ? mesRef : undefined
+    const datos = { ...form, cuotaActual, mesReferenciaAjuste }
     if (editId != null) await prestamosRepo.actualizar(editId, datos)
     else await prestamosRepo.agregar(datos)
     setForm(null)
@@ -118,7 +122,14 @@ export default function Prestamos() {
                     }`}
                   >
                     <td className="px-4 py-3">
-                      <div className="font-medium text-slate-800">{p.entidad}</div>
+                      <div className="flex items-center gap-1.5 font-medium text-slate-800">
+                        {p.entidad}
+                        {p.tipoAjuste === 'uva' && (
+                          <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700">
+                            UVA
+                          </span>
+                        )}
+                      </div>
                       <div className="text-xs text-slate-400">
                         Capital {money(p.capital)} · {fechaLegible(p.fecha)}
                       </div>
@@ -213,7 +224,7 @@ export default function Prestamos() {
                   onChange={(e) => setForm({ ...form, cantidadCuotas: Number(e.target.value) })}
                 />
               </Campo>
-              <Campo label="Valor de cuota" requerido>
+              <Campo label={form.tipoAjuste === 'uva' ? 'Cuota actual (este mes)' : 'Valor de cuota'} requerido>
                 <MoneyInput
                   value={form.valorCuota}
                   onChange={(valorCuota) => setForm({ ...form, valorCuota })}
@@ -221,21 +232,52 @@ export default function Prestamos() {
               </Campo>
             </div>
 
-            <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
-              Total a devolver:{' '}
-              <strong className="text-slate-900">
-                {money(form.cantidadCuotas * form.valorCuota)}
-              </strong>
-              {form.cantidadCuotas >= 1 && form.valorCuota > 0 && (
-                <span className="ml-1 text-slate-400">
-                  · finaliza{' '}
-                  {etiquetaMes(
-                    resumenPrestamo(form, mesRef).mesFin ?? mesInicioPrestamo(form),
-                    true,
-                  )}
-                </span>
+            <div className="grid grid-cols-2 gap-4">
+              <Campo label="Tipo de préstamo">
+                <Select
+                  value={form.tipoAjuste ?? 'fijo'}
+                  onChange={(e) =>
+                    setForm({ ...form, tipoAjuste: e.target.value as 'fijo' | 'uva' })
+                  }
+                >
+                  <option value="fijo">Cuota fija</option>
+                  <option value="uva">UVA (ajustable)</option>
+                </Select>
+              </Campo>
+              {form.tipoAjuste === 'uva' && (
+                <Campo label="Ajuste mensual %" hint="Estimado de suba de la UVA por mes">
+                  <TextInput
+                    type="number"
+                    step="0.1"
+                    min={0}
+                    value={form.ajusteMensualPct ?? 0}
+                    onChange={(e) => setForm({ ...form, ajusteMensualPct: Number(e.target.value) })}
+                  />
+                </Campo>
               )}
             </div>
+
+            {(() => {
+              const preview =
+                form.tipoAjuste === 'uva'
+                  ? { ...form, mesReferenciaAjuste: form.mesReferenciaAjuste || mesRef }
+                  : form
+              const r = resumenPrestamo(preview, mesInicioPrestamo(form))
+              return (
+                <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
+                  Total a devolver:{' '}
+                  <strong className="text-slate-900">{money(r.totalOriginal)}</strong>
+                  {form.tipoAjuste === 'uva' && form.ajusteMensualPct ? (
+                    <span className="ml-1 text-slate-400">· estimado con ajuste UVA</span>
+                  ) : null}
+                  {form.cantidadCuotas >= 1 && form.valorCuota > 0 && (
+                    <span className="ml-1 text-slate-400">
+                      · finaliza {etiquetaMes(r.mesFin ?? mesInicioPrestamo(form), true)}
+                    </span>
+                  )}
+                </div>
+              )
+            })()}
 
             <Campo label="Observaciones">
               <TextInput

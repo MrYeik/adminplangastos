@@ -12,8 +12,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       pwaAssets: { config: true, overrideManifestIcons: true },
       manifest: {
-        name: 'GASTOS — Finanzas del hogar',
-        short_name: 'GASTOS',
+        name: 'Aura+ — Finanzas del Hogar',
+        short_name: 'Aura+',
         description:
           'Administración y planificación financiera personal y familiar. Funciona sin conexión y guarda los datos en tu dispositivo.',
         lang: 'es-AR',

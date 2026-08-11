@@ -147,6 +147,11 @@ export default function Gastos() {
                     <div className="flex items-center gap-2 font-medium text-slate-800">
                       {g.descripcion}
                       {g.repetitivoMensual && <Repeat size={13} className="text-brand-500" />}
+                      {g.esServicio && (
+                        <span className="rounded bg-cyan-50 px-1.5 py-0.5 text-[10px] text-cyan-700">
+                          servicio
+                        </span>
+                      )}
                     </div>
                     <div className="text-xs text-slate-400">
                       {[g.medioPago, g.responsable].filter(Boolean).join(' · ')}
@@ -272,6 +277,12 @@ export default function Gastos() {
               label="Se repite todos los meses"
               checked={form.repetitivoMensual}
               onChange={(e) => setForm({ ...form, repetitivoMensual: e.target.checked })}
+            />
+
+            <Checkbox
+              label="Es un servicio (mostrarlo también en la pestaña Servicios)"
+              checked={form.esServicio ?? false}
+              onChange={(e) => setForm({ ...form, esServicio: e.target.checked })}
             />
 
             <Campo label="Observaciones">

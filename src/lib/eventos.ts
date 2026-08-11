@@ -3,7 +3,7 @@
 
 import type { DatosFinancieros } from './agregados'
 import { ingresoAplicaAMes, gastoAplicaAMes } from './agregados'
-import { tieneCuotaEnMes, mesInicioCompra, mesInicioPrestamo } from './cuotas'
+import { tieneCuotaEnMes, mesInicioCompra, cuotasEfectivas, importeCuotaPrestamoEnMes } from './cuotas'
 import { importeServicioEnMes } from './servicios'
 import { diaDeFecha, fechaConDia, sumarMeses, diasEntreISO } from './dates'
 
@@ -68,7 +68,7 @@ export function eventosDelMes(d: DatosFinancieros, mes: string): EventoFinancier
 
   for (const c of d.compras) {
     const inicio = mesInicioCompra(c)
-    if (tieneCuotaEnMes(inicio, c.cantidadCuotas, mes)) {
+    if (tieneCuotaEnMes(inicio, cuotasEfectivas(c), mes)) {
       eventos.push({
         fecha: fechaConDia(mes, diaDeFecha(c.fechaCompra)),
         tipo: 'tarjeta',
@@ -80,13 +80,13 @@ export function eventosDelMes(d: DatosFinancieros, mes: string): EventoFinancier
   }
 
   for (const p of d.prestamos) {
-    const inicio = mesInicioPrestamo(p)
-    if (tieneCuotaEnMes(inicio, p.cantidadCuotas, mes)) {
+    const imp = importeCuotaPrestamoEnMes(p, mes)
+    if (imp > 0) {
       eventos.push({
         fecha: fechaConDia(mes, diaDeFecha(p.fecha)),
         tipo: 'prestamo',
         titulo: p.entidad,
-        importe: p.valorCuota,
+        importe: imp,
       })
     }
   }

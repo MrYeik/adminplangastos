@@ -43,8 +43,8 @@ export default function Layout() {
     <div className="flex min-h-screen">
       <aside className="w-60 shrink-0 bg-slate-900 text-slate-200 flex flex-col">
         <div className="px-5 py-5 border-b border-slate-800">
-          <div className="text-xl font-bold text-white tracking-tight">GASTOS</div>
-          <div className="text-xs text-slate-400">Finanzas del hogar</div>
+          <div className="text-xl font-bold text-white tracking-tight">Aura<span className="text-brand-400">+</span></div>
+          <div className="text-xs text-slate-400">Finanzas del Hogar</div>
         </div>
         <nav className="flex-1 py-3 overflow-y-auto">
           {NAV.map(({ to, label, icon: Icon, end }) => {

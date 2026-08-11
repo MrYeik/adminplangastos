@@ -1,7 +1,18 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Link } from 'react-router-dom'
-import { Plus, Pencil, Trash2, CreditCard, ShoppingBag, CalendarClock, FileUp } from 'lucide-react'
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  CreditCard,
+  ShoppingBag,
+  CalendarClock,
+  FileUp,
+  Ban,
+  Layers,
+  Repeat,
+} from 'lucide-react'
 import PageShell from '@/components/PageShell'
 import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
@@ -111,6 +122,178 @@ export default function Tarjetas() {
     setFormCompra(null)
   }
 
+  // --- finalizar / adelantar cuotas ---
+  const [finalizando, setFinalizando] = useState<CompraTarjeta | null>(null)
+  const [adelantar, setAdelantar] = useState(1)
+  const restantesDe = (c: CompraTarjeta) => resumenCompra(c, mesRef).cuotasRestantes
+
+  const confirmarFinalizar = async () => {
+    if (!finalizando) return
+    const n = Math.min(Math.max(1, adelantar), restantesDe(finalizando))
+    const ya = finalizando.cuotasAdelantadas ?? 0
+    await comprasRepo.actualizar(finalizando.id!, { cuotasAdelantadas: ya + n })
+    setFinalizando(null)
+  }
+
+  // --- marcar como servicio ---
+  const toggleServicioCompra = (c: CompraTarjeta) =>
+    comprasRepo.actualizar(c.id!, { esServicio: !c.esServicio })
+
+  // --- unificar en un plan ---
+  const [selUnif, setSelUnif] = useState<Set<number>>(new Set())
+  const [unifOpen, setUnifOpen] = useState(false)
+  const [unifForm, setUnifForm] = useState({ nombre: 'Plan Z', cuotas: 12, interes: 0 })
+  const toggleSel = (id: number) =>
+    setSelUnif((s) => {
+      const n = new Set(s)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+
+  const confirmarUnificar = async () => {
+    if (seleccionada == null || selUnif.size < 2 || unifForm.cuotas < 1) return
+    const elegidas = compras.filter((c) => c.id != null && selUnif.has(c.id))
+    const saldo = elegidas.reduce((a, c) => a + resumenCompra(c, mesRef).totalPendiente, 0)
+    const conInteres = Math.round(saldo * (1 + unifForm.interes / 100))
+    const importePorCuota = Math.round(conInteres / unifForm.cuotas)
+    await comprasRepo.agregar({
+      tarjetaId: seleccionada,
+      descripcion: unifForm.nombre.trim() || 'Plan de pago',
+      comercio: '',
+      fechaCompra: hoyISO(),
+      cantidadCuotas: unifForm.cuotas,
+      cuotaActual: 1,
+      importePorCuota,
+      observaciones: `Unificación de ${elegidas.length} compras${unifForm.interes ? ` (interés ${unifForm.interes}%)` : ''}`,
+    })
+    // Finalizar las originales (sin cuotas futuras).
+    for (const c of elegidas) {
+      const restan = resumenCompra(c, mesRef).cuotasRestantes
+      await comprasRepo.actualizar(c.id!, { cuotasAdelantadas: (c.cuotasAdelantadas ?? 0) + restan })
+    }
+    setSelUnif(new Set())
+    setUnifOpen(false)
+  }
+
+  const activas = comprasSel.filter((c) => resumenCompra(c, mesRef).activa)
+  const finalizadas = comprasSel.filter((c) => !resumenCompra(c, mesRef).activa)
+
+  const tablaCompras = (lista: CompraTarjeta[], titulo: string, seleccionable: boolean) => (
+    <div className="mt-4">
+      <h3 className="mb-2 text-sm font-semibold text-slate-500">
+        {titulo} ({lista.length})
+      </h3>
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <table className="w-full min-w-[720px] text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+              {seleccionable && <th className="w-8 px-3 py-3"></th>}
+              <th className="px-4 py-3 font-medium">Compra</th>
+              <th className="px-4 py-3 font-medium">Cuota</th>
+              <th className="px-4 py-3 text-right font-medium">Por cuota</th>
+              <th className="px-4 py-3 text-right font-medium">Pendiente</th>
+              <th className="px-4 py-3 font-medium">Próx. venc.</th>
+              <th className="px-4 py-3 font-medium">Finaliza</th>
+              <th className="px-4 py-3"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {lista.map((c) => {
+              const r = resumenCompra(c, mesRef)
+              return (
+                <tr key={c.id} className={`border-b border-slate-100 last:border-0 hover:bg-slate-50 ${!r.activa ? 'opacity-60' : ''}`}>
+                  {seleccionable && (
+                    <td className="px-3 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selUnif.has(c.id!)}
+                        onChange={() => toggleSel(c.id!)}
+                        className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                        title="Seleccionar para unificar"
+                      />
+                    </td>
+                  )}
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1.5 font-medium text-slate-800">
+                      {c.descripcion}
+                      {c.esServicio && (
+                        <span className="inline-flex items-center gap-0.5 rounded bg-cyan-50 px-1.5 py-0.5 text-[10px] text-cyan-700">
+                          <Repeat size={10} /> servicio
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-slate-400">
+                      {[c.comercio, fechaLegible(c.fechaCompra)].filter(Boolean).join(' · ')}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+                      {r.activa ? `${r.cuotaActual} de ${r.cantidadCuotas}` : 'Finalizada'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-right tabular text-slate-700">{money(c.importePorCuota)}</td>
+                  <td className="px-4 py-3 text-right font-medium tabular text-slate-900">{money(r.totalPendiente)}</td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {r.proximoVencimiento ? (
+                      <span className="inline-flex items-center gap-1">
+                        <CalendarClock size={13} className="text-amber-500" />
+                        {etiquetaMes(r.proximoVencimiento)}
+                      </span>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">{r.mesFin ? etiquetaMes(r.mesFin) : '—'}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex justify-end gap-1">
+                      <BotonAdjuntos entidadTipo="compra" entidadId={c.id!} titulo={`Comprobantes · ${c.descripcion}`} />
+                      <button
+                        onClick={() => toggleServicioCompra(c)}
+                        className={`rounded-lg p-1.5 hover:bg-cyan-50 hover:text-cyan-600 ${c.esServicio ? 'text-cyan-600' : 'text-slate-400'}`}
+                        aria-label="Marcar como servicio"
+                        title={c.esServicio ? 'Quitar de Servicios' : 'Mostrar en Servicios'}
+                      >
+                        <Repeat size={16} />
+                      </button>
+                      {r.activa && (
+                        <button
+                          onClick={() => {
+                            setFinalizando(c)
+                            setAdelantar(r.cuotasRestantes)
+                          }}
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-amber-50 hover:text-amber-600"
+                          aria-label="Finalizar o adelantar cuotas"
+                          title="Finalizar / adelantar cuotas"
+                        >
+                          <Ban size={16} />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => editarCompra(c)}
+                        className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
+                        aria-label="Editar compra"
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button
+                        onClick={() => setCompraABorrar(c)}
+                        className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                        aria-label="Eliminar compra"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+
   return (
     <PageShell
       titulo="Tarjetas"
@@ -207,17 +390,21 @@ export default function Tarjetas() {
 
       {tarjetaSel && (
         <div className="mt-8">
-          <div className="mb-3 flex items-center justify-between">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-800">
-              <span
-                className="inline-block h-3 w-3 rounded-full"
-                style={{ background: tarjetaSel.color }}
-              />
+              <span className="inline-block h-3 w-3 rounded-full" style={{ background: tarjetaSel.color }} />
               Compras de {tarjetaSel.nombre}
             </h2>
-            <Button onClick={nuevaCompra}>
-              <Plus size={18} /> Nueva compra
-            </Button>
+            <div className="flex gap-2">
+              {selUnif.size >= 2 && (
+                <Button variante="secondary" onClick={() => setUnifOpen(true)}>
+                  <Layers size={16} /> Unificar {selUnif.size} en un plan
+                </Button>
+              )}
+              <Button onClick={nuevaCompra}>
+                <Plus size={18} /> Nueva compra
+              </Button>
+            </div>
           </div>
 
           {comprasSel.length === 0 ? (
@@ -227,84 +414,15 @@ export default function Tarjetas() {
               descripcion="Agregá una compra en cuotas y el sistema arma el cronograma."
             />
           ) : (
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                    <th className="px-4 py-3 font-medium">Compra</th>
-                    <th className="px-4 py-3 font-medium">Cuota</th>
-                    <th className="px-4 py-3 text-right font-medium">Por cuota</th>
-                    <th className="px-4 py-3 text-right font-medium">Pendiente</th>
-                    <th className="px-4 py-3 font-medium">Próx. venc.</th>
-                    <th className="px-4 py-3 font-medium">Finaliza</th>
-                    <th className="px-4 py-3"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {comprasSel.map((c) => {
-                    const r = resumenCompra(c, mesRef)
-                    return (
-                      <tr
-                        key={c.id}
-                        className={`border-b border-slate-100 last:border-0 hover:bg-slate-50 ${
-                          !r.activa ? 'opacity-50' : ''
-                        }`}
-                      >
-                        <td className="px-4 py-3">
-                          <div className="font-medium text-slate-800">{c.descripcion}</div>
-                          <div className="text-xs text-slate-400">
-                            {[c.comercio, fechaLegible(c.fechaCompra)].filter(Boolean).join(' · ')}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                            {r.activa ? `${r.cuotaActual} de ${r.cantidadCuotas}` : 'Finalizada'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right tabular text-slate-700">
-                          {money(c.importePorCuota)}
-                        </td>
-                        <td className="px-4 py-3 text-right font-medium tabular text-slate-900">
-                          {money(r.totalPendiente)}
-                        </td>
-                        <td className="px-4 py-3 text-slate-600">
-                          {r.proximoVencimiento ? (
-                            <span className="inline-flex items-center gap-1">
-                              <CalendarClock size={13} className="text-amber-500" />
-                              {etiquetaMes(r.proximoVencimiento)}
-                            </span>
-                          ) : (
-                            '—'
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-slate-600">
-                          {r.mesFin ? etiquetaMes(r.mesFin) : '—'}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex justify-end gap-1">
-                            <BotonAdjuntos entidadTipo="compra" entidadId={c.id!} titulo={`Comprobantes · ${c.descripcion}`} />
-                            <button
-                              onClick={() => editarCompra(c)}
-                              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
-                              aria-label="Editar compra"
-                            >
-                              <Pencil size={16} />
-                            </button>
-                            <button
-                              onClick={() => setCompraABorrar(c)}
-                              className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                              aria-label="Eliminar compra"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <>
+              {activas.length > 0 && tablaCompras(activas, 'Activas', true)}
+              {finalizadas.length > 0 && tablaCompras(finalizadas, 'Finalizadas', false)}
+              {selUnif.size > 0 && (
+                <p className="mt-2 text-xs text-slate-400">
+                  {selUnif.size} seleccionada(s). Marcá 2 o más para unificarlas en un plan de pago.
+                </p>
+              )}
+            </>
           )}
         </div>
       )}
@@ -459,6 +577,100 @@ export default function Tarjetas() {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Modal finalizar / adelantar cuotas */}
+      <Modal
+        abierto={finalizando != null}
+        titulo={`Finalizar / adelantar · ${finalizando?.descripcion ?? ''}`}
+        onCerrar={() => setFinalizando(null)}
+        ancho="max-w-sm"
+      >
+        {finalizando && (
+          <div className="space-y-4">
+            <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
+              Le quedan <strong className="text-slate-900">{restantesDe(finalizando)} cuotas</strong> de{' '}
+              {money(finalizando.importePorCuota)}.
+            </div>
+            <Campo label="¿Cuántas cuotas adelantás?" hint="Adelantar todas = finalizar la compra.">
+              <TextInput
+                type="number"
+                min={1}
+                max={restantesDe(finalizando)}
+                value={adelantar}
+                onChange={(e) => setAdelantar(Number(e.target.value))}
+              />
+            </Campo>
+            <button
+              onClick={() => setAdelantar(restantesDe(finalizando))}
+              className="text-xs font-medium text-brand-600 hover:underline"
+            >
+              Finalizar (adelantar las {restantesDe(finalizando)})
+            </button>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variante="secondary" onClick={() => setFinalizando(null)}>
+                Cancelar
+              </Button>
+              <Button onClick={confirmarFinalizar}>
+                {adelantar >= restantesDe(finalizando) ? 'Finalizar compra' : `Adelantar ${adelantar}`}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Modal unificar en un plan */}
+      <Modal abierto={unifOpen} titulo="Unificar en un plan de pago" onCerrar={() => setUnifOpen(false)} ancho="max-w-md">
+        {(() => {
+          const elegidas = compras.filter((c) => c.id != null && selUnif.has(c.id))
+          const saldo = elegidas.reduce((a, c) => a + resumenCompra(c, mesRef).totalPendiente, 0)
+          const conInteres = Math.round(saldo * (1 + unifForm.interes / 100))
+          const porCuota = unifForm.cuotas > 0 ? Math.round(conInteres / unifForm.cuotas) : 0
+          return (
+            <div className="space-y-4">
+              <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
+                Unificás <strong>{elegidas.length}</strong> compras. Saldo pendiente:{' '}
+                <strong className="tabular text-slate-900">{money(saldo)}</strong>.
+              </div>
+              <Campo label="Nombre del plan">
+                <TextInput value={unifForm.nombre} onChange={(e) => setUnifForm({ ...unifForm, nombre: e.target.value })} />
+              </Campo>
+              <div className="grid grid-cols-2 gap-4">
+                <Campo label="Cantidad de cuotas" requerido>
+                  <TextInput
+                    type="number"
+                    min={1}
+                    value={unifForm.cuotas}
+                    onChange={(e) => setUnifForm({ ...unifForm, cuotas: Number(e.target.value) })}
+                  />
+                </Campo>
+                <Campo label="Interés total %">
+                  <TextInput
+                    type="number"
+                    min={0}
+                    value={unifForm.interes}
+                    onChange={(e) => setUnifForm({ ...unifForm, interes: Number(e.target.value) })}
+                  />
+                </Campo>
+              </div>
+              <div className="rounded-lg bg-brand-50 p-3 text-sm text-brand-800">
+                Total con interés: <strong className="tabular">{money(conInteres)}</strong> →{' '}
+                <strong className="tabular">{unifForm.cuotas} × {money(porCuota)}</strong>
+              </div>
+              <p className="text-xs text-slate-400">
+                Las compras originales quedan finalizadas y se crea el plan nuevo (sin duplicar el saldo).
+              </p>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variante="secondary" onClick={() => setUnifOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button onClick={confirmarUnificar} disabled={unifForm.cuotas < 1}>
+                  Crear plan
+                </Button>
+              </div>
+            </div>
+          )
+        })()}
       </Modal>
 
       <ConfirmDialog

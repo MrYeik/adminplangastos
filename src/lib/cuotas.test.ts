@@ -12,6 +12,8 @@ import {
   estaActivaEnMes,
   resumenCompra,
   resumenPrestamo,
+  cuotasEfectivas,
+  importeCuotaPrestamoEnMes,
 } from './cuotas'
 
 describe('motor de cuotas', () => {
@@ -143,5 +145,32 @@ describe('motor de cuotas', () => {
     expect(r.cuotasRestantes).toBe(36)
     expect(r.totalPendiente).toBe(540_000_000)
     expect(r.mesFin).toBe('2029-07')
+  })
+
+  it('cuotas adelantadas acortan el plan por el final', () => {
+    const compra = { ...compraTV, cuotasAdelantadas: 2 }
+    expect(cuotasEfectivas(compra)).toBe(10)
+    const r = resumenCompra(compra, '2026-07')
+    expect(r.cantidadCuotas).toBe(10)
+    expect(r.mesFin).toBe('2027-04') // jul 2026 + 9 meses (en vez de jun 2027)
+    expect(r.totalPendiente).toBe(50_000_000) // 10 * 50.000
+  })
+
+  it('préstamo UVA: la cuota crece el % de ajuste por mes', () => {
+    const uva = {
+      fecha: '2026-07-05',
+      cantidadCuotas: 12,
+      valorCuota: 10_000_00, // $10.000 cuota actual
+      tipoAjuste: 'uva' as const,
+      ajusteMensualPct: 5,
+      mesReferenciaAjuste: '2026-07',
+    }
+    expect(importeCuotaPrestamoEnMes(uva, '2026-07')).toBe(10_000_00)
+    expect(importeCuotaPrestamoEnMes(uva, '2026-08')).toBe(10_500_00) // +5%
+    expect(importeCuotaPrestamoEnMes(uva, '2026-09')).toBe(11_025_00) // +5% compuesto
+    expect(importeCuotaPrestamoEnMes(uva, '2027-08')).toBe(0) // ya terminó
+    // el total pendiente suma las cuotas crecientes (mayor que 12 * cuota fija)
+    const r = resumenPrestamo(uva, '2026-07')
+    expect(r.totalPendiente).toBeGreaterThan(120_000_00)
   })
 })

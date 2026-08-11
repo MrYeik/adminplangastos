@@ -38,6 +38,7 @@ export interface Gasto {
   observaciones?: string
   repetitivoMensual: boolean
   tipo: TipoGasto
+  esServicio?: boolean // se refleja en la pestaña Servicios (sin duplicar valor)
 }
 
 export interface Tarjeta {
@@ -57,6 +58,8 @@ export interface CompraTarjeta {
   cuotaActual: number // cuántas cuotas ya transcurrieron al momento de cargar
   importePorCuota: number // centavos
   observaciones?: string
+  cuotasAdelantadas?: number // cuotas pagadas por adelantado (acortan el plan por el final)
+  esServicio?: boolean // se refleja en la pestaña Servicios (sin duplicar valor)
 }
 
 /** Un importe vigente a partir de un mes (para el historial de aumentos). */
@@ -83,15 +86,22 @@ export interface Servicio {
   observaciones?: string
 }
 
+export type TipoAjustePrestamo = 'fijo' | 'uva'
+
 export interface Prestamo {
   id?: ID
   entidad: string
   fecha: string
   capital: number // centavos
   cantidadCuotas: number
-  valorCuota: number // centavos
+  valorCuota: number // centavos (la cuota "actual" en pesos)
   cuotaActual: number
   observaciones?: string
+  // Ajuste UVA: la cuota crece `ajusteMensualPct` % por mes desde el mes de
+  // referencia (mesReferenciaAjuste). Si es 'fijo' o vacío, la cuota no varía.
+  tipoAjuste?: TipoAjustePrestamo
+  ajusteMensualPct?: number
+  mesReferenciaAjuste?: string // 'YYYY-MM' donde valorCuota es el importe conocido
 }
 
 export type EstadoPrestado = 'pendiente' | 'parcial' | 'cancelado'

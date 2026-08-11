@@ -30,7 +30,9 @@ import {
   serviciosDelMes,
   importesOrdenados,
 } from '@/lib/servicios'
-import type { Servicio, Tarjeta } from '@/models'
+import { gastoAplicaAMes } from '@/lib/agregados'
+import { importeCuotaEnMes, mesInicioCompra, cuotasEfectivas } from '@/lib/cuotas'
+import type { Servicio, Tarjeta, Gasto, CompraTarjeta } from '@/models'
 
 interface FormState {
   descripcion: string
@@ -61,6 +63,17 @@ export default function Servicios() {
   const mes = mesActual()
   const servicios = useLiveQuery(() => serviciosRepo.todos(), [], [] as Servicio[])
   const tarjetas = useLiveQuery(() => db.tarjetas.toArray(), [], [] as Tarjeta[])
+  // Gastos y compras marcados como "servicio" (se muestran acá sin sumar de nuevo).
+  const gastosServicio = useLiveQuery(
+    () => db.gastos.filter((g) => !!g.esServicio).toArray(),
+    [],
+    [] as Gasto[],
+  )
+  const comprasServicio = useLiveQuery(
+    () => db.comprasTarjeta.filter((c) => !!c.esServicio).toArray(),
+    [],
+    [] as CompraTarjeta[],
+  )
 
   const categorias = config?.categorias ?? []
   const mediosPago = config?.mediosPago ?? []
@@ -277,6 +290,62 @@ export default function Servicios() {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Reflejo: gastos/compras marcados como servicio (no se suman de nuevo) */}
+      {(gastosServicio.length > 0 || comprasServicio.length > 0) && (
+        <div className="mt-8">
+          <h2 className="mb-1 text-lg font-semibold text-slate-800">
+            También marcados como servicio
+          </h2>
+          <p className="mb-3 text-sm text-slate-500">
+            Vienen de Gastos y Tarjetas. Se muestran acá para entenderlos, pero{' '}
+            <strong>ya están contados</strong> en su sección — no se suman de nuevo.
+          </p>
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <th className="px-4 py-3 font-medium">Servicio</th>
+                  <th className="px-4 py-3 font-medium">Origen</th>
+                  <th className="px-4 py-3 text-right font-medium">Este mes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {gastosServicio.map((g) => (
+                  <tr key={`g${g.id}`} className="border-b border-slate-100 last:border-0">
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-slate-800">{g.descripcion}</div>
+                      <div className="text-xs text-slate-400">{g.categoria}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="rounded-full bg-rose-50 px-2 py-0.5 text-xs text-rose-700">Gasto</span>
+                    </td>
+                    <td className="px-4 py-3 text-right tabular text-slate-700">
+                      {formatMoney(gastoAplicaAMes(g, mes) ? g.importe : 0)}
+                    </td>
+                  </tr>
+                ))}
+                {comprasServicio.map((c) => (
+                  <tr key={`c${c.id}`} className="border-b border-slate-100 last:border-0">
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-slate-800">{c.descripcion}</div>
+                      <div className="text-xs text-slate-400">{c.comercio}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">Tarjeta</span>
+                    </td>
+                    <td className="px-4 py-3 text-right tabular text-slate-700">
+                      {formatMoney(
+                        importeCuotaEnMes(mesInicioCompra(c), cuotasEfectivas(c), c.importePorCuota, mes),
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

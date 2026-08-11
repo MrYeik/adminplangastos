@@ -5,8 +5,9 @@ import type { Ingreso, Gasto, CompraTarjeta, Prestamo, Servicio, TipoGasto } fro
 import { mesDeFecha } from './dates'
 import {
   importeCuotaEnMes,
+  importeCuotaPrestamoEnMes,
+  cuotasEfectivas,
   mesInicioCompra,
-  mesInicioPrestamo,
   resumenCompra,
   resumenPrestamo,
 } from './cuotas'
@@ -45,16 +46,13 @@ export function gastosDelMes(gastos: Gasto[], mes: string, tipo?: TipoGasto): nu
 export function cuotasTarjetaDelMes(compras: CompraTarjeta[], mes: string): number {
   return compras.reduce(
     (a, c) =>
-      a + importeCuotaEnMes(mesInicioCompra(c), c.cantidadCuotas, c.importePorCuota, mes),
+      a + importeCuotaEnMes(mesInicioCompra(c), cuotasEfectivas(c), c.importePorCuota, mes),
     0,
   )
 }
 
 export function cuotasPrestamoDelMes(prestamos: Prestamo[], mes: string): number {
-  return prestamos.reduce(
-    (a, p) => a + importeCuotaEnMes(mesInicioPrestamo(p), p.cantidadCuotas, p.valorCuota, mes),
-    0,
-  )
+  return prestamos.reduce((a, p) => a + importeCuotaPrestamoEnMes(p, mes), 0)
 }
 
 export interface ResumenMes {
@@ -100,6 +98,58 @@ export function resumenMes(d: DatosFinancieros, mes: string): ResumenMes {
 /** Serie de resúmenes para una ventana de meses. */
 export function serieMensual(d: DatosFinancieros, meses: string[]): ResumenMes[] {
   return meses.map((m) => resumenMes(d, m))
+}
+
+export interface FilaDesglose {
+  label: string
+  valores: number[] // un valor por mes de la ventana
+  total: number
+}
+
+function fila(label: string, valores: number[]): FilaDesglose {
+  return { label, valores, total: valores.reduce((a, b) => a + b, 0) }
+}
+
+/** Desglose por ítem de cada concepto de la proyección, para una ventana de meses. */
+export function desgloseProyeccion(
+  d: DatosFinancieros,
+  meses: string[],
+  tarjetas: { id?: number; nombre: string }[],
+): Record<string, FilaDesglose[]> {
+  const desg: Record<string, FilaDesglose[]> = {
+    ingresos: [],
+    gastosFijos: [],
+    gastosVariables: [],
+    cuotasTarjeta: [],
+    cuotasPrestamo: [],
+    servicios: [],
+  }
+  const conValor = (vals: number[]) => vals.some((v) => v !== 0)
+
+  for (const i of d.ingresos) {
+    const vals = meses.map((m) => (ingresoAplicaAMes(i, m) ? i.importe : 0))
+    if (conValor(vals)) desg.ingresos.push(fila(i.descripcion, vals))
+  }
+  for (const g of d.gastos) {
+    const vals = meses.map((m) => (gastoAplicaAMes(g, m) ? g.importe : 0))
+    if (conValor(vals)) (g.tipo === 'fijo' ? desg.gastosFijos : desg.gastosVariables).push(fila(g.descripcion, vals))
+  }
+  for (const t of tarjetas) {
+    const suyas = d.compras.filter((c) => c.tarjetaId === t.id)
+    const vals = meses.map((m) =>
+      suyas.reduce((a, c) => a + importeCuotaEnMes(mesInicioCompra(c), cuotasEfectivas(c), c.importePorCuota, m), 0),
+    )
+    if (conValor(vals)) desg.cuotasTarjeta.push(fila(t.nombre, vals))
+  }
+  for (const p of d.prestamos) {
+    const vals = meses.map((m) => importeCuotaPrestamoEnMes(p, m))
+    if (conValor(vals)) desg.cuotasPrestamo.push(fila(p.entidad, vals))
+  }
+  for (const s of d.servicios ?? []) {
+    const vals = meses.map((m) => importeServicioEnMes(s, m))
+    if (conValor(vals)) desg.servicios.push(fila(s.descripcion, vals))
+  }
+  return desg
 }
 
 export interface GastoCategoria {
@@ -173,7 +223,7 @@ export function proximosVencimientos(
         tipo: 'prestamo',
         descripcion: p.entidad,
         mes: r.proximoVencimiento,
-        importe: p.valorCuota,
+        importe: importeCuotaPrestamoEnMes(p, r.proximoVencimiento),
       })
     }
   }

@@ -17,9 +17,37 @@ export function mesInicioCompra(compra: Pick<CompraTarjeta, 'fechaCompra'>): str
   return mesDeFecha(compra.fechaCompra)
 }
 
+/** Cantidad de cuotas efectivas: descuenta las adelantadas (acortan el plan). */
+export function cuotasEfectivas(
+  compra: Pick<CompraTarjeta, 'cantidadCuotas' | 'cuotasAdelantadas'>,
+): number {
+  return Math.max(0, compra.cantidadCuotas - (compra.cuotasAdelantadas ?? 0))
+}
+
 /** Mes en que se paga la primera cuota del préstamo (el mes de otorgamiento). */
 export function mesInicioPrestamo(prestamo: Pick<Prestamo, 'fecha'>): string {
   return mesDeFecha(prestamo.fecha)
+}
+
+/**
+ * Importe de la cuota de un préstamo en un mes. Para préstamos UVA, la cuota
+ * crece `ajusteMensualPct` % por mes desde el mes de referencia.
+ */
+export function importeCuotaPrestamoEnMes(
+  prestamo: Pick<
+    Prestamo,
+    'fecha' | 'cantidadCuotas' | 'valorCuota' | 'tipoAjuste' | 'ajusteMensualPct' | 'mesReferenciaAjuste'
+  >,
+  mes: string,
+): number {
+  const inicio = mesInicioPrestamo(prestamo)
+  if (!tieneCuotaEnMes(inicio, prestamo.cantidadCuotas, mes)) return 0
+  if (prestamo.tipoAjuste === 'uva' && prestamo.ajusteMensualPct) {
+    const ref = prestamo.mesReferenciaAjuste || inicio
+    const factor = Math.pow(1 + prestamo.ajusteMensualPct / 100, diffMeses(ref, mes))
+    return Math.round(prestamo.valorCuota * factor)
+  }
+  return prestamo.valorCuota
 }
 
 /** Cronograma completo de cuotas de una compra en tarjeta. */
@@ -154,25 +182,43 @@ export function resumenDesde(
 }
 
 export function resumenCompra(
-  compra: Pick<CompraTarjeta, 'fechaCompra' | 'cantidadCuotas' | 'importePorCuota'>,
+  compra: Pick<
+    CompraTarjeta,
+    'fechaCompra' | 'cantidadCuotas' | 'importePorCuota' | 'cuotasAdelantadas'
+  >,
   mesRef: string,
 ): ResumenCuotas {
   return resumenDesde(
     mesInicioCompra(compra),
-    compra.cantidadCuotas,
+    cuotasEfectivas(compra),
     compra.importePorCuota,
     mesRef,
   )
 }
 
 export function resumenPrestamo(
-  prestamo: Pick<Prestamo, 'fecha' | 'cantidadCuotas' | 'valorCuota'>,
+  prestamo: Pick<
+    Prestamo,
+    'fecha' | 'cantidadCuotas' | 'valorCuota' | 'tipoAjuste' | 'ajusteMensualPct' | 'mesReferenciaAjuste'
+  >,
   mesRef: string,
 ): ResumenCuotas {
-  return resumenDesde(
-    mesInicioPrestamo(prestamo),
-    prestamo.cantidadCuotas,
-    prestamo.valorCuota,
-    mesRef,
-  )
+  const inicio = mesInicioPrestamo(prestamo)
+  const base = resumenDesde(inicio, prestamo.cantidadCuotas, prestamo.valorCuota, mesRef)
+  if (prestamo.tipoAjuste !== 'uva' || !prestamo.ajusteMensualPct) return base
+
+  // Cuota variable (UVA): recalcular totales sumando cuota por cuota.
+  let totalOriginal = 0
+  let totalPendiente = 0
+  for (const c of generarCuotas(inicio, prestamo.cantidadCuotas, 0)) {
+    const imp = importeCuotaPrestamoEnMes(prestamo, c.mes)
+    totalOriginal += imp
+    if (c.mes >= mesRef) totalPendiente += imp
+  }
+  return {
+    ...base,
+    importePorCuota: importeCuotaPrestamoEnMes(prestamo, mesRef) || prestamo.valorCuota,
+    totalOriginal,
+    totalPendiente,
+  }
 }
