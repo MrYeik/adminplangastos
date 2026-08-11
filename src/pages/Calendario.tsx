@@ -1,8 +1,11 @@
 import { useState } from 'react'
+import { CheckCircle2, Circle } from 'lucide-react'
 import PageShell from '@/components/PageShell'
 import MonthNav from '@/components/ui/MonthNav'
 import { useDatosFinancieros } from '@/store/useDatosFinancieros'
 import { eventosDelMes, ESTILO_TIPO, type EventoFinanciero, type TipoEvento } from '@/lib/eventos'
+import { conteoPagoServicios, pendientePagoServicios } from '@/lib/servicios'
+import { serviciosRepo } from '@/db/repos/servicios'
 import { mesActual, diasDelMes, primerDiaSemana, diaDeFecha, etiquetaMes, hoyISO } from '@/lib/dates'
 import { formatMoney } from '@/lib/money'
 
@@ -11,6 +14,18 @@ const DIAS_SEMANA = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 export default function Calendario() {
   const datos = useDatosFinancieros()
   const [mes, setMes] = useState(mesActual())
+
+  const togglePagoServicio = async (id: number) => {
+    const s = (datos.servicios ?? []).find((x) => x.id === id)
+    if (!s) return
+    const pagados = new Set(s.mesesPagados ?? [])
+    if (pagados.has(mes)) pagados.delete(mes)
+    else pagados.add(mes)
+    await serviciosRepo.actualizar(id, { mesesPagados: [...pagados] })
+  }
+
+  const conteoServicios = conteoPagoServicios(datos.servicios ?? [], mes)
+  const pendienteServicios = pendientePagoServicios(datos.servicios ?? [], mes)
 
   const eventos = eventosDelMes(datos, mes)
   const porDia = new Map<number, EventoFinanciero[]>()
@@ -54,6 +69,23 @@ export default function Calendario() {
         )}
       </div>
 
+      {/* Resumen de servicios pagados / pendientes */}
+      {conteoServicios.total > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 text-sm">
+          <CheckCircle2 size={16} className="text-emerald-600" />
+          <span className="text-slate-700">
+            Servicios pagados: <strong>{conteoServicios.pagados} de {conteoServicios.total}</strong>
+          </span>
+          {pendienteServicios > 0 ? (
+            <span className="text-slate-500">
+              · pendiente <strong className="tabular text-rose-600">{formatMoney(pendienteServicios)}</strong>
+            </span>
+          ) : (
+            <span className="text-emerald-600">· todo al día 🎉</span>
+          )}
+        </div>
+      )}
+
       {/* Grilla */}
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50">
@@ -87,15 +119,21 @@ export default function Calendario() {
                       {evs.slice(0, 3).map((e, j) => (
                         <div
                           key={j}
-                          className="flex items-center gap-1 truncate rounded px-1 py-0.5 text-[11px]"
+                          className={`flex items-center gap-1 truncate rounded px-1 py-0.5 text-[11px] ${e.pagado ? 'opacity-60' : ''}`}
                           style={{ background: `${ESTILO_TIPO[e.tipo].dot}1a` }}
-                          title={`${e.titulo} · ${formatMoney(e.importe)}`}
+                          title={`${e.titulo} · ${formatMoney(e.importe)}${e.pagado ? ' · pagado' : ''}`}
                         >
-                          <span
-                            className="h-1.5 w-1.5 shrink-0 rounded-full"
-                            style={{ background: ESTILO_TIPO[e.tipo].dot }}
-                          />
-                          <span className="truncate text-slate-700">{e.titulo}</span>
+                          {e.pagado ? (
+                            <CheckCircle2 size={10} className="shrink-0 text-emerald-600" />
+                          ) : (
+                            <span
+                              className="h-1.5 w-1.5 shrink-0 rounded-full"
+                              style={{ background: ESTILO_TIPO[e.tipo].dot }}
+                            />
+                          )}
+                          <span className={`truncate text-slate-700 ${e.pagado ? 'line-through' : ''}`}>
+                            {e.titulo}
+                          </span>
                         </div>
                       ))}
                       {evs.length > 3 && (
@@ -131,7 +169,14 @@ export default function Calendario() {
                     <span className="font-bold leading-none">{diaDeFecha(e.fecha)}</span>
                   </span>
                   <div>
-                    <div className="text-sm font-medium text-slate-800">{e.titulo}</div>
+                    <div className="flex items-center gap-1.5 text-sm font-medium text-slate-800">
+                      <span className={e.pagado ? 'text-slate-400 line-through' : ''}>{e.titulo}</span>
+                      {e.pagado && (
+                        <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] text-emerald-700">
+                          <CheckCircle2 size={10} /> Pagado
+                        </span>
+                      )}
+                    </div>
                     <div className="text-xs text-slate-400">
                       <span className={`rounded px-1.5 py-0.5 ${ESTILO_TIPO[e.tipo].chip}`}>
                         {ESTILO_TIPO[e.tipo].label}
@@ -140,14 +185,26 @@ export default function Calendario() {
                     </div>
                   </div>
                 </div>
-                <span
-                  className={`font-medium tabular ${
-                    e.tipo === 'ingreso' ? 'text-emerald-600' : 'text-slate-900'
-                  }`}
-                >
-                  {e.tipo === 'ingreso' ? '+' : ''}
-                  {formatMoney(e.importe)}
-                </span>
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`font-medium tabular ${
+                      e.tipo === 'ingreso' ? 'text-emerald-600' : 'text-slate-900'
+                    } ${e.pagado ? 'text-slate-400' : ''}`}
+                  >
+                    {e.tipo === 'ingreso' ? '+' : ''}
+                    {formatMoney(e.importe)}
+                  </span>
+                  {e.servicioId != null && (
+                    <button
+                      onClick={() => togglePagoServicio(e.servicioId!)}
+                      className={`rounded-lg p-1 hover:bg-emerald-50 hover:text-emerald-600 ${e.pagado ? 'text-emerald-600' : 'text-slate-300'}`}
+                      aria-label={e.pagado ? 'Marcar impago' : 'Marcar pagado'}
+                      title={e.pagado ? 'Pagado (tocá para desmarcar)' : 'Marcar como pagado'}
+                    >
+                      {e.pagado ? <CheckCircle2 size={18} /> : <Circle size={18} />}
+                    </button>
+                  )}
+                </div>
               </li>
             ))}
           </ul>

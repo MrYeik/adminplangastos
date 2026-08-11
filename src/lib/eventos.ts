@@ -15,6 +15,8 @@ export interface EventoFinanciero {
   titulo: string
   detalle?: string
   importe: number // centavos
+  servicioId?: number // si el evento viene de un servicio (para marcar pago)
+  pagado?: boolean // solo servicios: si está marcado pagado ese mes
 }
 
 export interface EstiloTipo {
@@ -100,6 +102,8 @@ export function eventosDelMes(d: DatosFinancieros, mes: string): EventoFinancier
         titulo: s.descripcion,
         detalle: s.tarjetaId != null ? 'Débito en tarjeta' : s.medioPago,
         importe: imp,
+        servicioId: s.id,
+        pagado: (s.mesesPagados ?? []).includes(mes),
       })
     }
   }

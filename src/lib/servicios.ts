@@ -54,3 +54,25 @@ export function serviciosDeTarjetaEnMes(
     .filter((s) => s.tarjetaId === tarjetaId)
     .reduce((acc, s) => acc + importeServicioEnMes(s, mes), 0)
 }
+
+/** ¿El servicio está marcado como pagado en un mes? */
+export function servicioPagadoEnMes(s: Servicio, mes: string): boolean {
+  return (s.mesesPagados ?? []).includes(mes)
+}
+
+/** Total de servicios activos aún sin pagar en un mes. */
+export function pendientePagoServicios(servicios: Servicio[], mes: string): number {
+  return servicios.reduce(
+    (acc, s) => acc + (servicioPagadoEnMes(s, mes) ? 0 : importeServicioEnMes(s, mes)),
+    0,
+  )
+}
+
+/** Cuenta servicios activos pagados / total en un mes. */
+export function conteoPagoServicios(servicios: Servicio[], mes: string): { pagados: number; total: number } {
+  const activos = servicios.filter((s) => importeServicioEnMes(s, mes) > 0)
+  return {
+    pagados: activos.filter((s) => servicioPagadoEnMes(s, mes)).length,
+    total: activos.length,
+  }
+}

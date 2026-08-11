@@ -23,6 +23,7 @@ import {
   CalendarClock,
   Landmark,
   Repeat,
+  CheckCircle2,
 } from 'lucide-react'
 import PageShell from '@/components/PageShell'
 import EmptyState from '@/components/ui/EmptyState'
@@ -35,6 +36,7 @@ import {
   deudaPendiente,
   proximosVencimientos,
 } from '@/lib/agregados'
+import { conteoPagoServicios, pendientePagoServicios } from '@/lib/servicios'
 import { mesActual, ventanaMeses, etiquetaMes } from '@/lib/dates'
 import { formatMoney, formatMoneyCompact } from '@/lib/money'
 import { colorCategoria } from '@/lib/colores'
@@ -90,6 +92,8 @@ export default function Dashboard() {
   const r = resumenMes(datos, mes)
   const deuda = deudaPendiente(datos.compras, datos.prestamos, mes)
   const tasaAhorro = r.ingresos > 0 ? Math.round((r.disponible / r.ingresos) * 100) : 0
+  const conteoPago = conteoPagoServicios(datos.servicios ?? [], mes)
+  const pendientePago = pendientePagoServicios(datos.servicios ?? [], mes)
 
   const ventana = ventanaMeses(config?.mesInicioProyeccion ?? mes, 12)
   const serie = serieMensual(datos, ventana)
@@ -135,6 +139,15 @@ export default function Dashboard() {
             <Kpi label="Gastos del mes" valor={formatMoney(r.gastos)} icon={Receipt} color="text-rose-600" sub={`Fijos ${formatMoney(r.gastosFijos)} · Variables ${formatMoney(r.gastosVariables)}`} />
             <Kpi label="Comprometido en cuotas" valor={formatMoney(r.cuotas)} icon={CreditCard} color="text-amber-600" sub={`Tarjetas ${formatMoney(r.cuotasTarjeta)} · Préstamos ${formatMoney(r.cuotasPrestamo)}`} />
             <Kpi label="Servicios del mes" valor={formatMoney(r.servicios)} icon={Repeat} color="text-cyan-600" sub="Débitos automáticos recurrentes" />
+            {conteoPago.total > 0 && (
+              <Kpi
+                label="Pendiente de pago"
+                valor={formatMoney(pendientePago)}
+                icon={CheckCircle2}
+                color={pendientePago > 0 ? 'text-rose-600' : 'text-emerald-600'}
+                sub={`${conteoPago.pagados} de ${conteoPago.total} servicios pagados`}
+              />
+            )}
             <Kpi label="Disponible" valor={formatMoney(r.disponible)} icon={Wallet} color={r.disponible >= 0 ? 'text-brand-600' : 'text-rose-600'} sub="Ingresos − gastos − cuotas − servicios" />
             <Kpi label="Deuda pendiente" valor={formatMoney(deuda)} icon={AlertTriangle} color="text-orange-600" sub="Total a pagar (tarjetas + préstamos)" />
             <Kpi label="Capacidad de ahorro" valor={`${tasaAhorro}%`} icon={PiggyBank} color="text-indigo-600" sub={`${formatMoney(r.disponible)} del ingreso`} />
