@@ -29,7 +29,15 @@ import MonthNav from '@/components/ui/MonthNav'
 import { tarjetasRepo, comprasRepo } from '@/db/repos/tarjetas'
 import { serviciosRepo } from '@/db/repos/servicios'
 import { useConfigStore } from '@/store/configStore'
-import { hoyISO, fechaLegible, etiquetaMes, mesActual, periodoResumen, resumenDeFecha } from '@/lib/dates'
+import {
+  hoyISO,
+  fechaLegible,
+  etiquetaMes,
+  mesActual,
+  periodoResumen,
+  resumenDeFecha,
+  fechaVencimientoResumen,
+} from '@/lib/dates'
 import { resumenCompra, mesInicioCompra, nroCuotaEnMes, importeCompraEnMes } from '@/lib/cuotas'
 import { serviciosDeTarjetaEnMes } from '@/lib/servicios'
 import { estaPagado, togglePagoMes } from '@/lib/pagos'
@@ -62,6 +70,8 @@ export default function Tarjetas() {
 
   const [seleccionada, setSeleccionada] = useState<number | null>(null)
   const [mesDetalle, setMesDetalle] = useState(mesActual())
+  // Editor de fechas (cierre/vencimiento) puntual del resumen navegado.
+  const [ajusteFechas, setAjusteFechas] = useState<{ cierre: string; vencimiento: string } | null>(null)
 
   // Formularios de tarjeta
   const [formTarjeta, setFormTarjeta] = useState<Omit<Tarjeta, 'id'> | null>(null)
@@ -125,8 +135,63 @@ export default function Tarjetas() {
   }
   const editarTarjeta = (t: Tarjeta) => {
     setEditTarjetaId(t.id!)
-    setFormTarjeta({ nombre: t.nombre, banco: t.banco, color: t.color, diaCierre: t.diaCierre })
+    setFormTarjeta({
+      nombre: t.nombre,
+      banco: t.banco,
+      color: t.color,
+      diaCierre: t.diaCierre,
+      diaVencimiento: t.diaVencimiento,
+      cierres: t.cierres,
+      vencimientos: t.vencimientos,
+    })
   }
+  // Reubica las compras de una tarjeta en el resumen correcto según su cierre.
+  const recomputarResumenes = async (
+    tarjetaId: number,
+    diaCierre?: number,
+    cierres?: Record<string, string>,
+  ) => {
+    for (const c of compras.filter((c) => c.tarjetaId === tarjetaId)) {
+      await comprasRepo.actualizar(c.id!, {
+        mesPrimerResumen: resumenDeFecha(c.fechaCompra, diaCierre, cierres),
+      })
+    }
+  }
+
+  // Abre el editor de fechas del resumen navegado (prefill con las vigentes).
+  const abrirAjusteFechas = () => {
+    setAjusteFechas({
+      cierre: periodoDetalle?.cierre ?? '',
+      vencimiento: vencDetalle ?? '',
+    })
+  }
+
+  // Guarda las fechas puntuales de ESTE resumen (override) y reubica compras.
+  const guardarAjusteFechas = async () => {
+    if (!tarjetaSel || !ajusteFechas) return
+    const cierres = { ...(tarjetaSel.cierres ?? {}) }
+    const vencimientos = { ...(tarjetaSel.vencimientos ?? {}) }
+    if (ajusteFechas.cierre) cierres[mesDetalle] = ajusteFechas.cierre
+    else delete cierres[mesDetalle]
+    if (ajusteFechas.vencimiento) vencimientos[mesDetalle] = ajusteFechas.vencimiento
+    else delete vencimientos[mesDetalle]
+    await tarjetasRepo.actualizar(tarjetaSel.id!, { cierres, vencimientos })
+    await recomputarResumenes(tarjetaSel.id!, tarjetaSel.diaCierre, cierres)
+    setAjusteFechas(null)
+  }
+
+  // Quita el override de este resumen y vuelve al día habitual.
+  const restablecerFechas = async () => {
+    if (!tarjetaSel) return
+    const cierres = { ...(tarjetaSel.cierres ?? {}) }
+    const vencimientos = { ...(tarjetaSel.vencimientos ?? {}) }
+    delete cierres[mesDetalle]
+    delete vencimientos[mesDetalle]
+    await tarjetasRepo.actualizar(tarjetaSel.id!, { cierres, vencimientos })
+    await recomputarResumenes(tarjetaSel.id!, tarjetaSel.diaCierre, cierres)
+    setAjusteFechas(null)
+  }
+
   const guardarTarjeta = async () => {
     if (!formTarjeta || !formTarjeta.nombre.trim()) return
     if (editTarjetaId != null) {
@@ -135,14 +200,13 @@ export default function Tarjetas() {
       const suyas = compras.filter((c) => c.tarjetaId === editTarjetaId)
       // Reubicar sus compras si cambió el cierre, o completar las que aún no
       // tienen resumen asignado (backfill de compras viejas).
-      const cambioCierre = antes && antes.diaCierre !== formTarjeta.diaCierre
+      const cambioCierre =
+        antes &&
+        (antes.diaCierre !== formTarjeta.diaCierre ||
+          JSON.stringify(antes.cierres ?? {}) !== JSON.stringify(formTarjeta.cierres ?? {}))
       const faltanResumen = suyas.some((c) => c.mesPrimerResumen == null)
       if (cambioCierre || faltanResumen) {
-        for (const c of suyas) {
-          await comprasRepo.actualizar(c.id!, {
-            mesPrimerResumen: resumenDeFecha(c.fechaCompra, formTarjeta.diaCierre),
-          })
-        }
+        await recomputarResumenes(editTarjetaId, formTarjeta.diaCierre, formTarjeta.cierres)
       }
     } else {
       const id = await tarjetasRepo.agregar(formTarjeta)
@@ -165,8 +229,12 @@ export default function Tarjetas() {
     if (!formCompra || seleccionada == null) return
     if (!formCompra.descripcion.trim() || formCompra.importePorCuota <= 0 || formCompra.cantidadCuotas < 1)
       return
-    // Resumen donde cae la 1ª cuota, según el día de cierre de la tarjeta.
-    const mesPrimerResumen = resumenDeFecha(formCompra.fechaCompra, tarjetaSel?.diaCierre)
+    // Resumen donde cae la 1ª cuota, según el cierre de la tarjeta.
+    const mesPrimerResumen = resumenDeFecha(
+      formCompra.fechaCompra,
+      tarjetaSel?.diaCierre,
+      tarjetaSel?.cierres,
+    )
     // cuotaActual como snapshot informativo respecto del mes actual
     const cuotaActual = nroCuotaEnMes(mesPrimerResumen, formCompra.cantidadCuotas, mesRef)
     const datos = { ...formCompra, mesPrimerResumen, cuotaActual, tarjetaId: seleccionada }
@@ -247,7 +315,11 @@ export default function Tarjetas() {
   const activas = comprasSel.filter((c) => c.servicioRecurrente || resumenCompra(c, mesRef).pendiente)
   const finalizadas = comprasSel.filter((c) => !c.servicioRecurrente && !resumenCompra(c, mesRef).pendiente)
 
-  const periodoDetalle = tarjetaSel ? periodoResumen(mesDetalle, tarjetaSel.diaCierre) : null
+  const periodoDetalle = tarjetaSel ? periodoResumen(mesDetalle, tarjetaSel.diaCierre, tarjetaSel.cierres) : null
+  const vencDetalle = tarjetaSel
+    ? fechaVencimientoResumen(mesDetalle, tarjetaSel.diaVencimiento, tarjetaSel.vencimientos)
+    : null
+  const cierreEsOverride = !!(tarjetaSel?.cierres && tarjetaSel.cierres[mesDetalle])
   const comprasPeriodo = tarjetaSel ? comprasDelMes(tarjetaSel.id!, mesDetalle) : []
   const totalPeriodo = tarjetaSel ? totalTarjetaMes(tarjetaSel.id!, mesDetalle) : 0
   const pagadoPeriodo = tarjetaSel ? pagadoTarjetaMes(tarjetaSel.id!, mesDetalle) : 0
@@ -540,12 +612,29 @@ export default function Tarjetas() {
             <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="text-xs uppercase tracking-wide text-slate-500">
-                    Resumen de {etiquetaMes(mesDetalle, true)}
+                  <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500">
+                    Resumen de {etiquetaMes(mesDetalle, true)} <span className="text-slate-400 normal-case">(se paga este mes)</span>
                   </div>
-                  <div className="text-sm text-slate-600">
-                    Período: {fechaLegible(periodoDetalle.desde)} — {fechaLegible(periodoDetalle.hasta)}
-                    {tarjetaSel.diaCierre ? ` · cierre ${fechaLegible(periodoDetalle.cierre)}` : ''}
+                  <div className="mt-0.5 text-sm text-slate-600">
+                    Compras del {fechaLegible(periodoDetalle.desde)} al {fechaLegible(periodoDetalle.hasta)}
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                    {(tarjetaSel.diaCierre || cierreEsOverride) && (
+                      <span className="inline-flex items-center gap-1">
+                        <CalendarClock size={13} className="text-amber-500" />
+                        Cierra {fechaLegible(periodoDetalle.cierre)}
+                        {cierreEsOverride && (
+                          <span className="rounded bg-amber-50 px-1 py-0.5 text-[10px] text-amber-700">ajustado</span>
+                        )}
+                      </span>
+                    )}
+                    {vencDetalle && <span>Vence {fechaLegible(vencDetalle)}</span>}
+                    <button
+                      onClick={abrirAjusteFechas}
+                      className="inline-flex items-center gap-1 font-medium text-brand-600 hover:underline"
+                    >
+                      <Pencil size={12} /> Ajustar fechas de este resumen
+                    </button>
                   </div>
                 </div>
                 <MonthNav mes={mesDetalle} onCambiar={setMesDetalle} />
@@ -670,21 +759,38 @@ export default function Tarjetas() {
                 ))}
               </datalist>
             </Campo>
-            <Campo label="Día de cierre del resumen" hint="Opcional. Define el período mensual.">
-              <TextInput
-                type="number"
-                min={1}
-                max={31}
-                value={formTarjeta.diaCierre ?? ''}
-                onChange={(e) =>
-                  setFormTarjeta({
-                    ...formTarjeta,
-                    diaCierre: e.target.value === '' ? undefined : Number(e.target.value),
-                  })
-                }
-                placeholder="Ej: 25"
-              />
-            </Campo>
+            <div className="grid grid-cols-2 gap-4">
+              <Campo label="Día de cierre habitual" hint="El resumen cierra ese día del mes anterior.">
+                <TextInput
+                  type="number"
+                  min={1}
+                  max={31}
+                  value={formTarjeta.diaCierre ?? ''}
+                  onChange={(e) =>
+                    setFormTarjeta({
+                      ...formTarjeta,
+                      diaCierre: e.target.value === '' ? undefined : Number(e.target.value),
+                    })
+                  }
+                  placeholder="Ej: 27"
+                />
+              </Campo>
+              <Campo label="Día de vencimiento" hint="Día de pago dentro del mes del resumen.">
+                <TextInput
+                  type="number"
+                  min={1}
+                  max={31}
+                  value={formTarjeta.diaVencimiento ?? ''}
+                  onChange={(e) =>
+                    setFormTarjeta({
+                      ...formTarjeta,
+                      diaVencimiento: e.target.value === '' ? undefined : Number(e.target.value),
+                    })
+                  }
+                  placeholder="Ej: 10"
+                />
+              </Campo>
+            </div>
             <Campo label="Color">
               <div className="flex flex-wrap gap-2">
                 {COLORES.map((c) => (
@@ -928,6 +1034,52 @@ export default function Tarjetas() {
             </div>
           )
         })()}
+      </Modal>
+
+      {/* Modal ajustar fechas puntuales del resumen navegado */}
+      <Modal
+        abierto={ajusteFechas != null}
+        titulo={`Fechas del resumen · ${etiquetaMes(mesDetalle, true)}`}
+        onCerrar={() => setAjusteFechas(null)}
+        ancho="max-w-sm"
+      >
+        {ajusteFechas && (
+          <div className="space-y-4">
+            <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">
+              Cambiá el cierre o el vencimiento solo para <strong>este</strong> resumen (por ejemplo si
+              este mes se corrió). Los demás meses siguen con el día habitual.
+            </p>
+            <Campo label="Fecha de cierre" hint="Última compra que entra en este resumen.">
+              <TextInput
+                type="date"
+                value={ajusteFechas.cierre}
+                onChange={(e) => setAjusteFechas({ ...ajusteFechas, cierre: e.target.value })}
+              />
+            </Campo>
+            <Campo label="Fecha de vencimiento" hint="Hasta cuándo pagarlo.">
+              <TextInput
+                type="date"
+                value={ajusteFechas.vencimiento}
+                onChange={(e) => setAjusteFechas({ ...ajusteFechas, vencimiento: e.target.value })}
+              />
+            </Campo>
+            <div className="flex items-center justify-between pt-2">
+              {cierreEsOverride || (tarjetaSel?.vencimientos && tarjetaSel.vencimientos[mesDetalle]) ? (
+                <button onClick={restablecerFechas} className="text-xs font-medium text-slate-500 hover:underline">
+                  Volver al día habitual
+                </button>
+              ) : (
+                <span />
+              )}
+              <div className="flex gap-2">
+                <Button variante="secondary" onClick={() => setAjusteFechas(null)}>
+                  Cancelar
+                </Button>
+                <Button onClick={guardarAjusteFechas}>Guardar</Button>
+              </div>
+            </div>
+          </div>
+        )}
       </Modal>
 
       <ConfirmDialog

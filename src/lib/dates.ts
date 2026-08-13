@@ -58,32 +58,83 @@ export function sumarDiasISO(fechaISO: string, dias: number): string {
 }
 
 /**
- * Período del resumen de una tarjeta que cierra en `mes`. Con día de cierre,
- * va del día siguiente al cierre anterior hasta el cierre de este mes.
- * Sin día de cierre, es el mes calendario.
+ * Fecha de cierre del resumen que se paga en `mesResumen`. Convención: el
+ * resumen se nombra por el mes en que se paga y CIERRA el mes anterior. Usa el
+ * override en `cierres[mesResumen]` si existe; si no, el día habitual sobre el
+ * mes anterior. Devuelve null si la tarjeta no tiene configuración de cierre.
  */
-export function periodoResumen(
-  mes: string,
+export function fechaCierreResumen(
+  mesResumen: string,
   diaCierre?: number,
-): { desde: string; hasta: string; cierre: string } {
-  if (!diaCierre) {
-    const ult = fechaConDia(mes, diasDelMes(mes))
-    return { desde: fechaConDia(mes, 1), hasta: ult, cierre: ult }
-  }
-  const cierre = fechaConDia(mes, diaCierre)
-  const cierreAnterior = fechaConDia(sumarMeses(mes, -1), diaCierre)
-  return { desde: sumarDiasISO(cierreAnterior, 1), hasta: cierre, cierre }
+  cierres?: Record<string, string>,
+): string | null {
+  if (cierres && cierres[mesResumen]) return cierres[mesResumen]
+  if (!diaCierre) return null
+  return fechaConDia(sumarMeses(mesResumen, -1), diaCierre)
 }
 
 /**
- * Mes de resumen 'YYYY-MM' al que pertenece una fecha, según el día de cierre.
- * Con cierre, una compra posterior al cierre entra en el resumen del mes siguiente.
- * Sin día de cierre, es el mes calendario.
+ * Fecha de vencimiento (pago) del resumen que se paga en `mesResumen`, dentro
+ * de ese mismo mes. Override en `vencimientos[mesResumen]` o el día habitual.
  */
-export function resumenDeFecha(fechaISO: string, diaCierre?: number): string {
-  const mes = mesDeFecha(fechaISO)
-  if (!diaCierre) return mes
-  return diaDeFecha(fechaISO) <= diaCierre ? mes : sumarMeses(mes, 1)
+export function fechaVencimientoResumen(
+  mesResumen: string,
+  diaVencimiento?: number,
+  vencimientos?: Record<string, string>,
+): string | null {
+  if (vencimientos && vencimientos[mesResumen]) return vencimientos[mesResumen]
+  if (!diaVencimiento) return null
+  return fechaConDia(mesResumen, diaVencimiento)
+}
+
+/**
+ * Período de compras que abarca el resumen que se paga en `mesResumen`: desde
+ * el día siguiente al cierre anterior hasta el cierre de este resumen. Sin
+ * configuración de cierre, es el mes calendario.
+ */
+export function periodoResumen(
+  mesResumen: string,
+  diaCierre?: number,
+  cierres?: Record<string, string>,
+): { desde: string; hasta: string; cierre: string } {
+  const cierre = fechaCierreResumen(mesResumen, diaCierre, cierres)
+  if (!cierre) {
+    const ult = fechaConDia(mesResumen, diasDelMes(mesResumen))
+    return { desde: fechaConDia(mesResumen, 1), hasta: ult, cierre: ult }
+  }
+  const cierreAnterior = fechaCierreResumen(sumarMeses(mesResumen, -1), diaCierre, cierres)
+  const desde = cierreAnterior
+    ? sumarDiasISO(cierreAnterior, 1)
+    : fechaConDia(sumarMeses(mesResumen, -1), 1)
+  return { desde, hasta: cierre, cierre }
+}
+
+/**
+ * Mes de resumen (mes de pago 'YYYY-MM') al que pertenece una compra. Busca el
+ * resumen cuyo período (cierre anterior, cierre] contiene la fecha. Como el
+ * resumen cierra el mes anterior, una compra suele caer en el resumen del mes
+ * siguiente. Sin configuración de cierre, es el mes calendario.
+ */
+export function resumenDeFecha(
+  fechaISO: string,
+  diaCierre?: number,
+  cierres?: Record<string, string>,
+): string {
+  const base = mesDeFecha(fechaISO)
+  if (!diaCierre && !(cierres && Object.keys(cierres).length)) return base
+  let m = sumarMeses(base, 1) // el resumen se paga el mes siguiente a la compra
+  for (let i = 0; i < 6; i++) {
+    const cierre = fechaCierreResumen(m, diaCierre, cierres)
+    const cierrePrev = fechaCierreResumen(sumarMeses(m, -1), diaCierre, cierres)
+    if (cierre && fechaISO > cierre) {
+      m = sumarMeses(m, 1) // la compra es posterior a este cierre → resumen siguiente
+    } else if (cierrePrev && fechaISO <= cierrePrev) {
+      m = sumarMeses(m, -1) // la compra entró antes del cierre anterior → resumen previo
+    } else {
+      break
+    }
+  }
+  return m
 }
 
 /** Días de diferencia entre dos fechas ISO (b - a), sin corrimiento horario. */

@@ -6,6 +6,8 @@ import {
   ventanaMeses,
   etiquetaMes,
   resumenDeFecha,
+  periodoResumen,
+  fechaVencimientoResumen,
 } from './dates'
 
 describe('utilidades de fechas', () => {
@@ -38,12 +40,32 @@ describe('utilidades de fechas', () => {
     expect(etiquetaMes('2026-07', true)).toBe('Julio 2026')
   })
 
-  it('resumen según día de cierre: antes/después del cierre', () => {
+  it('resumenDeFecha nombra el resumen por el mes de pago (cierra el mes anterior)', () => {
     // Sin día de cierre = mes calendario
-    expect(resumenDeFecha('2026-07-27')).toBe('2026-07')
-    // Cierre día 25: el 25 entra en el mes; el 27 pasa al mes siguiente
-    expect(resumenDeFecha('2026-07-25', 25)).toBe('2026-07')
-    expect(resumenDeFecha('2026-07-27', 25)).toBe('2026-08')
-    expect(resumenDeFecha('2026-12-30', 25)).toBe('2027-01') // cruza el año
+    expect(resumenDeFecha('2026-07-15')).toBe('2026-07')
+    // Cierre día 27: el resumen "Agosto" cierra el 27/07 y abarca 28/06–27/07.
+    expect(resumenDeFecha('2026-07-15', 27)).toBe('2026-08') // dentro del período
+    expect(resumenDeFecha('2026-06-28', 27)).toBe('2026-08') // 1er día del período
+    expect(resumenDeFecha('2026-07-27', 27)).toBe('2026-08') // justo el cierre
+    expect(resumenDeFecha('2026-07-28', 27)).toBe('2026-09') // pasado el cierre → sig.
+  })
+
+  it('resumenDeFecha respeta el override de cierre de un mes puntual', () => {
+    // Si el cierre del resumen de Agosto se corrió al 28/07, el 28/07 entra en Agosto.
+    const cierres = { '2026-08': '2026-07-28' }
+    expect(resumenDeFecha('2026-07-28', 27, cierres)).toBe('2026-08')
+  })
+
+  it('periodoResumen: el resumen de un mes cierra el mes anterior', () => {
+    const p = periodoResumen('2026-08', 27) // resumen que se paga en agosto
+    expect(p.cierre).toBe('2026-07-27')
+    expect(p.hasta).toBe('2026-07-27')
+    expect(p.desde).toBe('2026-06-28') // día siguiente al cierre anterior (27/06)
+  })
+
+  it('fechaVencimientoResumen usa el día habitual dentro del mes de pago', () => {
+    expect(fechaVencimientoResumen('2026-08', 10)).toBe('2026-08-10')
+    // Override puntual
+    expect(fechaVencimientoResumen('2026-08', 10, { '2026-08': '2026-08-12' })).toBe('2026-08-12')
   })
 })

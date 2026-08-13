@@ -47,8 +47,11 @@ export interface Tarjeta {
   nombre: string
   banco?: string
   color: string
-  diaCierre?: number // día de cierre del resumen (1-31); define el período mensual
-  mesesPagados?: string[] // meses 'YYYY-MM' cuyo resumen está pagado
+  diaCierre?: number // día de cierre habitual (1-31). El resumen de un mes cierra ESE día del mes anterior.
+  diaVencimiento?: number // día de vencimiento/pago habitual (1-31), dentro del mes del resumen.
+  cierres?: Record<string, string> // override por resumen: mes de pago 'YYYY-MM' → fecha de cierre 'YYYY-MM-DD'
+  vencimientos?: Record<string, string> // override por resumen: mes de pago 'YYYY-MM' → fecha de vencimiento 'YYYY-MM-DD'
+  mesesPagados?: string[] // (obsoleto) meses cuyo resumen está pagado; ahora el pago es por compra
 }
 
 /** Una compra que fue absorbida por un plan de unificación. */
