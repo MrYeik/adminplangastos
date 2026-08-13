@@ -29,7 +29,7 @@ import MonthNav from '@/components/ui/MonthNav'
 import { tarjetasRepo, comprasRepo } from '@/db/repos/tarjetas'
 import { serviciosRepo } from '@/db/repos/servicios'
 import { useConfigStore } from '@/store/configStore'
-import { hoyISO, fechaLegible, etiquetaMes, mesActual, periodoResumen } from '@/lib/dates'
+import { hoyISO, fechaLegible, etiquetaMes, mesActual, periodoResumen, resumenDeFecha } from '@/lib/dates'
 import { resumenCompra, mesInicioCompra, nroCuotaEnMes, importeCompraEnMes } from '@/lib/cuotas'
 import { serviciosDeTarjetaEnMes } from '@/lib/servicios'
 import { estaPagado, togglePagoMes } from '@/lib/pagos'
@@ -81,15 +81,39 @@ export default function Tarjetas() {
       .filter((c) => c.tarjetaId === tarjetaId && !c.servicioRecurrente)
       .reduce((acc, c) => acc + resumenCompra(c, mesRef).totalPendiente, 0)
 
+  // Compras que se facturan en el resumen de un mes (cuota o servicio recurrente).
+  const comprasDelMes = (tarjetaId: number, mes: string) =>
+    compras.filter((c) => c.tarjetaId === tarjetaId && importeCompraEnMes(c, mes) > 0)
+
   // Total que se debita a la tarjeta en un mes (cuotas + servicios adheridos).
   const totalTarjetaMes = (tarjetaId: number, mes: string) =>
-    compras
-      .filter((c) => c.tarjetaId === tarjetaId)
-      .reduce((acc, c) => acc + importeCompraEnMes(c, mes), 0) +
+    comprasDelMes(tarjetaId, mes).reduce((acc, c) => acc + importeCompraEnMes(c, mes), 0) +
     serviciosDeTarjetaEnMes(servicios, tarjetaId, mes)
 
-  const toggleTarjetaPagada = (t: Tarjeta, mes: string) =>
-    tarjetasRepo.actualizar(t.id!, { mesesPagados: togglePagoMes(t.mesesPagados, mes) })
+  // Total ya pagado del resumen de un mes (compras tildadas).
+  const pagadoTarjetaMes = (tarjetaId: number, mes: string) =>
+    comprasDelMes(tarjetaId, mes)
+      .filter((c) => estaPagado(c.mesesPagados, mes))
+      .reduce((acc, c) => acc + importeCompraEnMes(c, mes), 0)
+
+  // ¿Todas las compras del resumen de ese mes están pagadas?
+  const resumenPagado = (tarjetaId: number, mes: string) => {
+    const b = comprasDelMes(tarjetaId, mes)
+    return b.length > 0 && b.every((c) => estaPagado(c.mesesPagados, mes))
+  }
+
+  // Tilda/destilda una compra puntual en un mes de resumen.
+  const toggleCompraPagada = (c: CompraTarjeta, mes: string) =>
+    comprasRepo.actualizar(c.id!, { mesesPagados: togglePagoMes(c.mesesPagados, mes) })
+
+  // Marca (o desmarca) todo el resumen del mes de una tarjeta de una vez.
+  const toggleTarjetaPagada = async (tarjetaId: number, mes: string) => {
+    const b = comprasDelMes(tarjetaId, mes)
+    const marcar = !(b.length > 0 && b.every((c) => estaPagado(c.mesesPagados, mes)))
+    for (const c of b) {
+      if (estaPagado(c.mesesPagados, mes) !== marcar) await toggleCompraPagada(c, mes)
+    }
+  }
 
   const tarjetaSel = tarjetas.find((t) => t.id === seleccionada) ?? null
   const comprasSel = compras.filter((c) => c.tarjetaId === seleccionada)
@@ -105,8 +129,22 @@ export default function Tarjetas() {
   }
   const guardarTarjeta = async () => {
     if (!formTarjeta || !formTarjeta.nombre.trim()) return
-    if (editTarjetaId != null) await tarjetasRepo.actualizar(editTarjetaId, formTarjeta)
-    else {
+    if (editTarjetaId != null) {
+      const antes = tarjetas.find((t) => t.id === editTarjetaId)
+      await tarjetasRepo.actualizar(editTarjetaId, formTarjeta)
+      const suyas = compras.filter((c) => c.tarjetaId === editTarjetaId)
+      // Reubicar sus compras si cambió el cierre, o completar las que aún no
+      // tienen resumen asignado (backfill de compras viejas).
+      const cambioCierre = antes && antes.diaCierre !== formTarjeta.diaCierre
+      const faltanResumen = suyas.some((c) => c.mesPrimerResumen == null)
+      if (cambioCierre || faltanResumen) {
+        for (const c of suyas) {
+          await comprasRepo.actualizar(c.id!, {
+            mesPrimerResumen: resumenDeFecha(c.fechaCompra, formTarjeta.diaCierre),
+          })
+        }
+      }
+    } else {
       const id = await tarjetasRepo.agregar(formTarjeta)
       setSeleccionada(id as number)
     }
@@ -127,13 +165,11 @@ export default function Tarjetas() {
     if (!formCompra || seleccionada == null) return
     if (!formCompra.descripcion.trim() || formCompra.importePorCuota <= 0 || formCompra.cantidadCuotas < 1)
       return
+    // Resumen donde cae la 1ª cuota, según el día de cierre de la tarjeta.
+    const mesPrimerResumen = resumenDeFecha(formCompra.fechaCompra, tarjetaSel?.diaCierre)
     // cuotaActual como snapshot informativo respecto del mes actual
-    const cuotaActual = nroCuotaEnMes(
-      mesInicioCompra(formCompra),
-      formCompra.cantidadCuotas,
-      mesRef,
-    )
-    const datos = { ...formCompra, cuotaActual, tarjetaId: seleccionada }
+    const cuotaActual = nroCuotaEnMes(mesPrimerResumen, formCompra.cantidadCuotas, mesRef)
+    const datos = { ...formCompra, mesPrimerResumen, cuotaActual, tarjetaId: seleccionada }
     if (editCompraId != null) await comprasRepo.actualizar(editCompraId, datos)
     else await comprasRepo.agregar(datos)
     setFormCompra(null)
@@ -208,12 +244,15 @@ export default function Tarjetas() {
     setUnifOpen(false)
   }
 
-  const activas = comprasSel.filter((c) => c.servicioRecurrente || resumenCompra(c, mesRef).activa)
-  const finalizadas = comprasSel.filter((c) => !c.servicioRecurrente && !resumenCompra(c, mesRef).activa)
+  const activas = comprasSel.filter((c) => c.servicioRecurrente || resumenCompra(c, mesRef).pendiente)
+  const finalizadas = comprasSel.filter((c) => !c.servicioRecurrente && !resumenCompra(c, mesRef).pendiente)
 
   const periodoDetalle = tarjetaSel ? periodoResumen(mesDetalle, tarjetaSel.diaCierre) : null
+  const comprasPeriodo = tarjetaSel ? comprasDelMes(tarjetaSel.id!, mesDetalle) : []
   const totalPeriodo = tarjetaSel ? totalTarjetaMes(tarjetaSel.id!, mesDetalle) : 0
-  const pagadoPeriodo = tarjetaSel ? estaPagado(tarjetaSel.mesesPagados, mesDetalle) : false
+  const pagadoPeriodo = tarjetaSel ? pagadoTarjetaMes(tarjetaSel.id!, mesDetalle) : 0
+  const faltaPeriodo = totalPeriodo - pagadoPeriodo
+  const periodoTotalmentePagado = tarjetaSel ? resumenPagado(tarjetaSel.id!, mesDetalle) : false
 
   const tablaCompras = (lista: CompraTarjeta[], titulo: string, seleccionable: boolean) => (
     <div className="mt-4">
@@ -241,7 +280,7 @@ export default function Tarjetas() {
               const abierta = c.id != null && comprasAbiertas.has(c.id)
               return (
                 <Fragment key={c.id}>
-                <tr className={`border-b border-slate-100 hover:bg-slate-50 ${!r.activa ? 'opacity-60' : ''}`}>
+                <tr className={`border-b border-slate-100 hover:bg-slate-50 ${!c.servicioRecurrente && !r.pendiente ? 'opacity-60' : ''}`}>
                   {seleccionable && (
                     <td className="px-3 py-3">
                       <input
@@ -284,9 +323,11 @@ export default function Tarjetas() {
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
                       {c.servicioRecurrente
                         ? 'Recurrente'
-                        : r.activa
+                        : r.estado === 'encurso'
                           ? `${r.cuotaActual} de ${r.cantidadCuotas}`
-                          : 'Finalizada'}
+                          : r.estado === 'proxima'
+                            ? `Empieza ${etiquetaMes(r.mesInicio)}`
+                            : 'Finalizada'}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right tabular text-slate-700">{money(c.importePorCuota)}</td>
@@ -315,7 +356,7 @@ export default function Tarjetas() {
                       >
                         <Repeat size={16} />
                       </button>
-                      {r.activa && (
+                      {!c.servicioRecurrente && r.pendiente && (
                         <button
                           onClick={() => {
                             setFinalizando(c)
@@ -398,10 +439,10 @@ export default function Tarjetas() {
           {tarjetas.map((t) => {
             const pendiente = pendientePorTarjeta(t.id!)
             const activas = compras.filter(
-              (c) => c.tarjetaId === t.id && resumenCompra(c, mesRef).activa,
+              (c) => c.tarjetaId === t.id && (c.servicioRecurrente || resumenCompra(c, mesRef).pendiente),
             ).length
             const totalMes = totalTarjetaMes(t.id!, mesRef)
-            const pagadoMes = estaPagado(t.mesesPagados, mesRef)
+            const pagadoMes = resumenPagado(t.id!, mesRef)
             return (
               <button
                 key={t.id}
@@ -453,12 +494,12 @@ export default function Tarjetas() {
                       tabIndex={0}
                       onClick={(e) => {
                         e.stopPropagation()
-                        toggleTarjetaPagada(t, mesRef)
+                        toggleTarjetaPagada(t.id!, mesRef)
                       }}
                       className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${
                         pagadoMes ? 'bg-white/90 text-emerald-700' : 'bg-white/25 hover:bg-white/40'
                       }`}
-                      title={pagadoMes ? 'Pagado (tocá para desmarcar)' : 'Marcar como pagado'}
+                      title={pagadoMes ? 'Resumen pagado (tocá para desmarcar)' : 'Marcar todo el resumen como pagado'}
                     >
                       {pagadoMes ? <CheckCircle2 size={13} /> : <Circle size={13} />}
                       {pagadoMes ? 'Pagado' : 'Pagar'}
@@ -509,17 +550,71 @@ export default function Tarjetas() {
                 </div>
                 <MonthNav mes={mesDetalle} onCambiar={setMesDetalle} />
               </div>
-              <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
+              {/* Total / Pagado / Falta del resumen */}
+              <div className="mt-3 grid grid-cols-3 gap-3 border-t border-slate-100 pt-3">
                 <div>
-                  <div className="text-xs text-slate-500">Total del período</div>
+                  <div className="text-xs text-slate-500">Total del resumen</div>
                   <div className="text-xl font-bold tabular text-slate-900">{money(totalPeriodo)}</div>
                 </div>
+                <div>
+                  <div className="text-xs text-slate-500">Pagado</div>
+                  <div className="text-xl font-bold tabular text-emerald-600">{money(pagadoPeriodo)}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-500">Falta pagar</div>
+                  <div className="text-xl font-bold tabular text-rose-600">{money(faltaPeriodo)}</div>
+                </div>
+              </div>
+
+              {/* Movimientos del resumen, con tilde de pagado por compra */}
+              {comprasPeriodo.length > 0 && (
+                <div className="mt-4 overflow-hidden rounded-lg border border-slate-200">
+                  <table className="w-full text-sm">
+                    <tbody>
+                      {comprasPeriodo.map((c) => {
+                        const pagada = estaPagado(c.mesesPagados, mesDetalle)
+                        const r = resumenCompra(c, mesDetalle)
+                        return (
+                          <tr key={c.id} className="border-b border-slate-100 last:border-0">
+                            <td className="w-10 px-3 py-2.5">
+                              <button
+                                onClick={() => toggleCompraPagada(c, mesDetalle)}
+                                className={pagada ? 'text-emerald-600' : 'text-slate-300 hover:text-slate-500'}
+                                aria-label={pagada ? 'Marcar como no pagada' : 'Marcar como pagada'}
+                                title={pagada ? 'Pagada (tocá para desmarcar)' : 'Marcar como pagada'}
+                              >
+                                {pagada ? <CheckCircle2 size={20} /> : <Circle size={20} />}
+                              </button>
+                            </td>
+                            <td className="px-2 py-2.5">
+                              <div className={`font-medium ${pagada ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
+                                {c.descripcion}
+                              </div>
+                              <div className="text-xs text-slate-400">
+                                {c.servicioRecurrente
+                                  ? 'Recurrente'
+                                  : `Cuota ${r.cuotaActual} de ${r.cantidadCuotas}`}
+                              </div>
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-medium tabular text-slate-900">
+                              {money(importeCompraEnMes(c, mesDetalle))}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div className="mt-3 flex justify-end">
                 <Button
-                  variante={pagadoPeriodo ? 'secondary' : 'primary'}
-                  onClick={() => toggleTarjetaPagada(tarjetaSel, mesDetalle)}
+                  variante={periodoTotalmentePagado ? 'secondary' : 'primary'}
+                  onClick={() => toggleTarjetaPagada(tarjetaSel.id!, mesDetalle)}
+                  disabled={comprasPeriodo.length === 0}
                 >
-                  {pagadoPeriodo ? <CheckCircle2 size={16} /> : <Circle size={16} />}
-                  {pagadoPeriodo ? 'Pagado' : 'Marcar pagado'}
+                  {periodoTotalmentePagado ? <CheckCircle2 size={16} /> : <Circle size={16} />}
+                  {periodoTotalmentePagado ? 'Resumen pagado' : 'Marcar todo el resumen pagado'}
                 </Button>
               </div>
             </div>

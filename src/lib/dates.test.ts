@@ -5,6 +5,7 @@ import {
   diffMeses,
   ventanaMeses,
   etiquetaMes,
+  resumenDeFecha,
 } from './dates'
 
 describe('utilidades de fechas', () => {
@@ -35,5 +36,14 @@ describe('utilidades de fechas', () => {
   it('arma etiquetas legibles', () => {
     expect(etiquetaMes('2026-07')).toBe('Jul 2026')
     expect(etiquetaMes('2026-07', true)).toBe('Julio 2026')
+  })
+
+  it('resumen según día de cierre: antes/después del cierre', () => {
+    // Sin día de cierre = mes calendario
+    expect(resumenDeFecha('2026-07-27')).toBe('2026-07')
+    // Cierre día 25: el 25 entra en el mes; el 27 pasa al mes siguiente
+    expect(resumenDeFecha('2026-07-25', 25)).toBe('2026-07')
+    expect(resumenDeFecha('2026-07-27', 25)).toBe('2026-08')
+    expect(resumenDeFecha('2026-12-30', 25)).toBe('2027-01') // cruza el año
   })
 })

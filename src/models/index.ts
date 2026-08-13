@@ -68,6 +68,8 @@ export interface CompraTarjeta {
   importePorCuota: number // centavos
   observaciones?: string
   cuotasAdelantadas?: number // cuotas pagadas por adelantado (acortan el plan por el final)
+  mesPrimerResumen?: string // 'YYYY-MM' resumen donde cae la 1ª cuota (según día de cierre)
+  mesesPagados?: string[] // meses de resumen 'YYYY-MM' en que esta compra se pagó
   esServicio?: boolean // se refleja en la pestaña Servicios (sin duplicar valor)
   categoriaServicio?: string // categoría con la que se muestra en Servicios
   servicioRecurrente?: boolean // se repite todos los meses (como un servicio)

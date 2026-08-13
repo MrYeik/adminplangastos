@@ -12,9 +12,15 @@ export interface CuotaCalculada {
   importe: number // centavos
 }
 
-/** Mes en que se factura la primera cuota (el mes de la compra). */
-export function mesInicioCompra(compra: Pick<CompraTarjeta, 'fechaCompra'>): string {
-  return mesDeFecha(compra.fechaCompra)
+/**
+ * Mes de resumen en que se factura la primera cuota. Usa `mesPrimerResumen`
+ * (ya calculado con el día de cierre de la tarjeta) y, si no está, cae al mes
+ * calendario de la fecha de compra.
+ */
+export function mesInicioCompra(
+  compra: Pick<CompraTarjeta, 'fechaCompra' | 'mesPrimerResumen'>,
+): string {
+  return compra.mesPrimerResumen ?? mesDeFecha(compra.fechaCompra)
 }
 
 /** Cantidad de cuotas efectivas: descuenta las adelantadas (acortan el plan). */
@@ -52,7 +58,7 @@ export function importeCuotaPrestamoEnMes(
 
 /** Cronograma completo de cuotas de una compra en tarjeta. */
 export function cuotasDeCompra(
-  compra: Pick<CompraTarjeta, 'fechaCompra' | 'cantidadCuotas' | 'importePorCuota'>,
+  compra: Pick<CompraTarjeta, 'fechaCompra' | 'mesPrimerResumen' | 'cantidadCuotas' | 'importePorCuota'>,
 ): CuotaCalculada[] {
   return generarCuotas(mesInicioCompra(compra), compra.cantidadCuotas, compra.importePorCuota)
 }
@@ -156,7 +162,21 @@ export interface ResumenCuotas {
   totalOriginal: number
   totalPendiente: number
   proximoVencimiento: string | null
-  activa: boolean
+  activa: boolean // tiene una cuota exactamente en el mes de referencia
+  estado: EstadoPlan // dónde está el plan respecto del mes de referencia
+  pendiente: boolean // aún tiene cuotas por vencer (en curso o por empezar)
+}
+
+/** próxima = todavía no arrancó · encurso = facturando · finalizada = ya terminó. */
+export type EstadoPlan = 'proxima' | 'encurso' | 'finalizada'
+
+/** Estado de un plan de N cuotas desde `mesInicio`, visto en `mesRef`. */
+export function estadoPlan(mesInicio: string, cantidadCuotas: number, mesRef: string): EstadoPlan {
+  if (cantidadCuotas < 1) return 'finalizada'
+  const idx = diffMeses(mesInicio, mesRef)
+  if (idx < 0) return 'proxima'
+  if (idx >= cantidadCuotas) return 'finalizada'
+  return 'encurso'
 }
 
 /** Resumen completo de un plan de cuotas visto desde un mes de referencia. */
@@ -167,6 +187,7 @@ export function resumenDesde(
   mesRef: string,
 ): ResumenCuotas {
   const cuotas = generarCuotas(mesInicio, cantidadCuotas, importePorCuota)
+  const estado = estadoPlan(mesInicio, cantidadCuotas, mesRef)
   return {
     mesInicio,
     mesFin: mesFinalizacion(mesInicio, cantidadCuotas),
@@ -178,6 +199,8 @@ export function resumenDesde(
     totalPendiente: totalPendiente(cuotas, mesRef),
     proximoVencimiento: proximoVencimiento(cuotas, mesRef),
     activa: estaActivaEnMes(cuotas, mesRef),
+    estado,
+    pendiente: estado !== 'finalizada',
   }
 }
 
@@ -188,7 +211,7 @@ export function resumenDesde(
 export function importeCompraEnMes(
   compra: Pick<
     CompraTarjeta,
-    'fechaCompra' | 'cantidadCuotas' | 'importePorCuota' | 'cuotasAdelantadas' | 'servicioRecurrente'
+    'fechaCompra' | 'mesPrimerResumen' | 'cantidadCuotas' | 'importePorCuota' | 'cuotasAdelantadas' | 'servicioRecurrente'
   >,
   mes: string,
 ): number {
@@ -200,7 +223,7 @@ export function importeCompraEnMes(
 export function resumenCompra(
   compra: Pick<
     CompraTarjeta,
-    'fechaCompra' | 'cantidadCuotas' | 'importePorCuota' | 'cuotasAdelantadas'
+    'fechaCompra' | 'mesPrimerResumen' | 'cantidadCuotas' | 'importePorCuota' | 'cuotasAdelantadas'
   >,
   mesRef: string,
 ): ResumenCuotas {

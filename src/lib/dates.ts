@@ -75,6 +75,17 @@ export function periodoResumen(
   return { desde: sumarDiasISO(cierreAnterior, 1), hasta: cierre, cierre }
 }
 
+/**
+ * Mes de resumen 'YYYY-MM' al que pertenece una fecha, según el día de cierre.
+ * Con cierre, una compra posterior al cierre entra en el resumen del mes siguiente.
+ * Sin día de cierre, es el mes calendario.
+ */
+export function resumenDeFecha(fechaISO: string, diaCierre?: number): string {
+  const mes = mesDeFecha(fechaISO)
+  if (!diaCierre) return mes
+  return diaDeFecha(fechaISO) <= diaCierre ? mes : sumarMeses(mes, 1)
+}
+
 /** Días de diferencia entre dos fechas ISO (b - a), sin corrimiento horario. */
 export function diasEntreISO(a: string, b: string): number {
   const [ay, am, ad] = a.split('-').map(Number)

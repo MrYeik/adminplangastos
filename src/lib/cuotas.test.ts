@@ -14,6 +14,8 @@ import {
   resumenPrestamo,
   cuotasEfectivas,
   importeCuotaPrestamoEnMes,
+  estadoPlan,
+  importeCompraEnMes,
 } from './cuotas'
 
 describe('motor de cuotas', () => {
@@ -136,6 +138,35 @@ describe('motor de cuotas', () => {
     expect(r.totalPendiente).toBe(0)
     expect(r.proximoVencimiento).toBeNull()
     expect(r.activa).toBe(false)
+  })
+
+  it('estado del plan: próxima / en curso / finalizada', () => {
+    // TV en 12 desde julio 2026
+    expect(estadoPlan('2026-07', 12, '2026-05')).toBe('proxima') // antes de empezar
+    expect(estadoPlan('2026-07', 12, '2026-07')).toBe('encurso') // primera cuota
+    expect(estadoPlan('2026-07', 12, '2027-06')).toBe('encurso') // última cuota
+    expect(estadoPlan('2026-07', 12, '2027-07')).toBe('finalizada') // pasada
+  })
+
+  it('una compra futura sigue pendiente (no aparece como finalizada)', () => {
+    const futura = { fechaCompra: '2026-09-05', cantidadCuotas: 12, importePorCuota: 1_000_000 }
+    const r = resumenCompra(futura, '2026-08') // visto un mes antes de empezar
+    expect(r.estado).toBe('proxima')
+    expect(r.pendiente).toBe(true)
+    expect(r.activa).toBe(false) // no factura este mes, pero no está terminada
+  })
+
+  it('mesPrimerResumen ubica la compra en el resumen posterior al cierre', () => {
+    // Compra post-cierre: su 1ª cuota vive en el resumen de agosto, no de julio.
+    const compra = {
+      fechaCompra: '2026-07-27',
+      mesPrimerResumen: '2026-08',
+      cantidadCuotas: 3,
+      importePorCuota: 3_000_000,
+    }
+    expect(importeCompraEnMes(compra, '2026-07')).toBe(0)
+    expect(importeCompraEnMes(compra, '2026-08')).toBe(3_000_000)
+    expect(resumenCompra(compra, '2026-08').cuotaActual).toBe(1)
   })
 
   it('resumen de préstamo', () => {
