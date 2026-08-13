@@ -41,6 +41,8 @@ import {
 import { resumenCompra, mesInicioCompra, nroCuotaEnMes, importeCompraEnMes } from '@/lib/cuotas'
 import { serviciosDeTarjetaEnMes } from '@/lib/servicios'
 import { estaPagado, togglePagoMes } from '@/lib/pagos'
+import { convertirUsdAArs } from '@/lib/cotizacion'
+import { useCotizacionStore } from '@/store/cotizacionStore'
 import type { Tarjeta, CompraTarjeta, Servicio } from '@/models'
 
 const COLORES = [
@@ -62,6 +64,8 @@ const COMPRA_VACIA: Omit<CompraTarjeta, 'id' | 'tarjetaId'> = {
 export default function Tarjetas() {
   const money = useConfigStore((s) => s.money)
   const config = useConfigStore((s) => s.config)
+  const cotizacion = useCotizacionStore((s) => s.cotizacion)
+  const promedioUsd = cotizacion?.promedio ?? null
   const mesRef = mesActual()
 
   const tarjetas = useLiveQuery(() => tarjetasRepo.todas(), [], [] as Tarjeta[])
@@ -223,12 +227,20 @@ export default function Tarjetas() {
   const editarCompra = (c: CompraTarjeta) => {
     setEditCompraId(c.id!)
     const { id: _id, tarjetaId: _t, ...resto } = c
-    setFormCompra(resto)
+    // Si es en dólares, editamos el importe en USD (el original), no el convertido.
+    if (resto.moneda === 'USD' && resto.importeOriginalUSD != null) {
+      setFormCompra({ ...resto, importePorCuota: resto.importeOriginalUSD })
+    } else {
+      setFormCompra(resto)
+    }
   }
   const guardarCompra = async () => {
     if (!formCompra || seleccionada == null) return
     if (!formCompra.descripcion.trim() || formCompra.importePorCuota <= 0 || formCompra.cantidadCuotas < 1)
       return
+    // En dólares necesitamos la cotización para convertir a pesos.
+    const esUSD = formCompra.moneda === 'USD'
+    if (esUSD && !promedioUsd) return
     // Resumen donde cae la 1ª cuota, según el cierre de la tarjeta.
     const mesPrimerResumen = resumenDeFecha(
       formCompra.fechaCompra,
@@ -237,7 +249,23 @@ export default function Tarjetas() {
     )
     // cuotaActual como snapshot informativo respecto del mes actual
     const cuotaActual = nroCuotaEnMes(mesPrimerResumen, formCompra.cantidadCuotas, mesRef)
-    const datos = { ...formCompra, mesPrimerResumen, cuotaActual, tarjetaId: seleccionada }
+    // Si es USD, el importe cargado es en dólares: se guarda el original y el
+    // convertido a pesos (a la cotización del día) que usan todos los cálculos.
+    const camposMoneda = esUSD
+      ? {
+          moneda: 'USD' as const,
+          importeOriginalUSD: formCompra.importePorCuota,
+          cotizacion: promedioUsd!,
+          importePorCuota: convertirUsdAArs(formCompra.importePorCuota, promedioUsd!),
+        }
+      : { moneda: 'ARS' as const, importeOriginalUSD: undefined, cotizacion: undefined }
+    const datos = {
+      ...formCompra,
+      ...camposMoneda,
+      mesPrimerResumen,
+      cuotaActual,
+      tarjetaId: seleccionada,
+    }
     if (editCompraId != null) await comprasRepo.actualizar(editCompraId, datos)
     else await comprasRepo.agregar(datos)
     setFormCompra(null)
@@ -384,6 +412,11 @@ export default function Tarjetas() {
                       {c.esServicio && (
                         <span className="inline-flex items-center gap-0.5 rounded bg-cyan-50 px-1.5 py-0.5 text-[10px] text-cyan-700">
                           <Repeat size={10} /> servicio
+                        </span>
+                      )}
+                      {c.moneda === 'USD' && c.importeOriginalUSD != null && (
+                        <span className="inline-flex items-center gap-0.5 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] text-emerald-700">
+                          US$ {(c.importeOriginalUSD / 100).toFixed(2)}
                         </span>
                       )}
                     </div>
@@ -851,6 +884,29 @@ export default function Tarjetas() {
                 />
               </Campo>
             </div>
+            <Campo label="Moneda">
+              <div className="flex gap-2">
+                {(['ARS', 'USD'] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setFormCompra({ ...formCompra, moneda: m })}
+                    className={`rounded-lg border px-3 py-1.5 text-sm font-medium ${
+                      (formCompra.moneda ?? 'ARS') === m
+                        ? 'border-brand-500 bg-brand-50 text-brand-700'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    {m === 'ARS' ? 'Pesos' : 'Dólares (US$)'}
+                  </button>
+                ))}
+              </div>
+              {formCompra.moneda === 'USD' && !promedioUsd && (
+                <p className="mt-1 text-xs text-rose-600">
+                  Necesito la cotización del dólar para convertir. Abrí el Dashboard para traerla.
+                </p>
+              )}
+            </Campo>
             <div className="grid grid-cols-2 gap-4">
               <Campo label="Cantidad de cuotas" requerido>
                 <TextInput
@@ -862,7 +918,7 @@ export default function Tarjetas() {
                   }
                 />
               </Campo>
-              <Campo label="Importe por cuota" requerido>
+              <Campo label={formCompra.moneda === 'USD' ? 'Importe por cuota (US$)' : 'Importe por cuota'} requerido>
                 <MoneyInput
                   value={formCompra.importePorCuota}
                   onChange={(importePorCuota) => setFormCompra({ ...formCompra, importePorCuota })}
@@ -870,21 +926,39 @@ export default function Tarjetas() {
               </Campo>
             </div>
 
-            <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
-              Total de la compra:{' '}
-              <strong className="text-slate-900">
-                {money(formCompra.cantidadCuotas * formCompra.importePorCuota)}
-              </strong>
-              {formCompra.cantidadCuotas >= 1 && formCompra.importePorCuota > 0 && (
-                <span className="ml-1 text-slate-400">
-                  · finaliza{' '}
-                  {etiquetaMes(
-                    resumenCompra(formCompra, mesRef).mesFin ?? mesInicioCompra(formCompra),
-                    true,
-                  )}
-                </span>
+            {formCompra.moneda === 'USD' ? (
+              <div className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">
+                Total en dólares:{' '}
+                <strong>u$s {((formCompra.cantidadCuotas * formCompra.importePorCuota) / 100).toFixed(2)}</strong>
+                {promedioUsd ? (
+                  <span>
+                    {' '}· ≈{' '}
+                    <strong>
+                      {money(convertirUsdAArs(formCompra.cantidadCuotas * formCompra.importePorCuota, promedioUsd))}
+                    </strong>{' '}
+                    a {money(promedioUsd)} (dólar oficial BNA)
+                  </span>
+                ) : (
+                  <span className="text-rose-600"> · sin cotización disponible</span>
+                )}
+              </div>
+            ) : (
+              <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
+                Total de la compra:{' '}
+                <strong className="text-slate-900">
+                  {money(formCompra.cantidadCuotas * formCompra.importePorCuota)}
+                </strong>
+                {formCompra.cantidadCuotas >= 1 && formCompra.importePorCuota > 0 && (
+                  <span className="ml-1 text-slate-400">
+                    · finaliza{' '}
+                    {etiquetaMes(
+                      resumenCompra(formCompra, mesRef).mesFin ?? mesInicioCompra(formCompra),
+                      true,
+                    )}
+                  </span>
               )}
             </div>
+            )}
 
             <Campo label="Observaciones">
               <TextInput
@@ -932,7 +1006,8 @@ export default function Tarjetas() {
                 disabled={
                   !formCompra.descripcion.trim() ||
                   formCompra.importePorCuota <= 0 ||
-                  formCompra.cantidadCuotas < 1
+                  formCompra.cantidadCuotas < 1 ||
+                  (formCompra.moneda === 'USD' && !promedioUsd)
                 }
               >
                 {editCompraId != null ? 'Guardar' : 'Agregar'}

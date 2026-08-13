@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Link } from 'react-router-dom'
 import {
@@ -9,6 +9,7 @@ import {
   CreditCard,
   Check,
   Lock,
+  DollarSign,
 } from 'lucide-react'
 import PageShell from '@/components/PageShell'
 import Button from '@/components/ui/Button'
@@ -19,6 +20,8 @@ import { extraerLineasPDF, PasswordRequeridaError } from '@/lib/pdfExtract'
 import { detectarResumen, type Consumo } from '@/lib/resumenes'
 import { fechaLegible } from '@/lib/dates'
 import { formatMoney } from '@/lib/money'
+import { convertirUsdAArs } from '@/lib/cotizacion'
+import { useCotizacionStore } from '@/store/cotizacionStore'
 import type { Tarjeta } from '@/models'
 
 function esCompraEnCuotas(c: Consumo): boolean {
@@ -28,6 +31,14 @@ function esCompraEnCuotas(c: Consumo): boolean {
 export default function ImportarResumen() {
   const fileRef = useRef<HTMLInputElement>(null)
   const tarjetas = useLiveQuery(() => db.tarjetas.toArray(), [], [] as Tarjeta[])
+  const { cotizacion, cargando: cargandoCotiz, asegurarHoy, refrescar } = useCotizacionStore()
+  useEffect(() => {
+    asegurarHoy()
+  }, [asegurarHoy])
+  // Cotización usada para valuar consumos en dólares (promedio del día).
+  const cotizUsd = cotizacion?.promedio ?? null
+  const aArs = (c: Consumo) =>
+    c.moneda === 'USD' ? (cotizUsd ? convertirUsdAArs(c.importe, cotizUsd) : 0) : c.importe
 
   const [tarjetaId, setTarjetaId] = useState<number | ''>('')
   const [archivo, setArchivo] = useState<File | null>(null)
@@ -74,7 +85,7 @@ export default function ImportarResumen() {
       setPassword('')
       setBanco(detectado.banco)
       setConsumos(detectado.consumos)
-      setIncluidos(detectado.consumos.map((c) => c.moneda === 'ARS'))
+      setIncluidos(detectado.consumos.map(() => true))
     } catch (e) {
       if (e instanceof PasswordRequeridaError) {
         setPasswordRequerida(true)
@@ -101,14 +112,18 @@ export default function ImportarResumen() {
     let total = 0
     let cantidad = 0
     let enCuotas = 0
+    let usd = 0 // consumos en dólares incluidos
     consumos.forEach((c, i) => {
-      if (!incluidos[i] || c.moneda !== 'ARS') return
-      total += c.importe
+      if (!incluidos[i]) return
+      if (c.moneda === 'USD' && !cotizUsd) return // sin cotización no se puede valuar
+      total += aArs(c)
       cantidad++
+      if (c.moneda === 'USD') usd++
       if (esCompraEnCuotas(c)) enCuotas++
     })
-    return { total, cantidad, enCuotas }
-  }, [consumos, incluidos])
+    return { total, cantidad, enCuotas, usd }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [consumos, incluidos, cotizUsd])
 
   const importar = async () => {
     if (tarjetaId === '') return
@@ -116,7 +131,9 @@ export default function ImportarResumen() {
     let enCuotas = 0
     for (let i = 0; i < consumos.length; i++) {
       const c = consumos[i]
-      if (!incluidos[i] || c.moneda !== 'ARS') continue
+      if (!incluidos[i]) continue
+      const esUSD = c.moneda === 'USD'
+      if (esUSD && !cotizUsd) continue // sin cotización no se puede convertir
       // Todos los consumos son movimientos de la tarjeta: los de un pago se
       // cargan como compra de 1 cuota; los financiados, con sus cuotas.
       const cuotas = esCompraEnCuotas(c)
@@ -127,8 +144,13 @@ export default function ImportarResumen() {
         fechaCompra: c.fecha,
         cantidadCuotas: cuotas ? c.cuotaTotal! : 1,
         cuotaActual: cuotas ? (c.cuotaActual ?? 1) : 1,
-        importePorCuota: c.importe,
-        observaciones: `Importado del resumen (${banco})`,
+        importePorCuota: aArs(c),
+        ...(esUSD
+          ? { moneda: 'USD' as const, importeOriginalUSD: c.importe, cotizacion: cotizUsd! }
+          : {}),
+        observaciones: esUSD
+          ? `Importado del resumen (${banco}) · u$s ${(c.importe / 100).toFixed(2)} a ${formatMoney(cotizUsd!)}`
+          : `Importado del resumen (${banco})`,
       })
       total++
       if (cuotas) enCuotas++
@@ -247,10 +269,33 @@ export default function ImportarResumen() {
       {/* Vista previa */}
       {consumos.length > 0 && (
         <>
+          {consumos.some((c) => c.moneda === 'USD') && (
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm">
+              <span className="inline-flex items-center gap-2 text-emerald-800">
+                <DollarSign size={16} />
+                {cotizUsd ? (
+                  <>
+                    Los consumos en dólares se convierten a pesos a{' '}
+                    <strong>{formatMoney(cotizUsd)}</strong> (dólar oficial BNA
+                    {cotizacion ? ` · ${fechaLegible(cotizacion.fecha)}` : ''}).
+                  </>
+                ) : (
+                  <>Hay consumos en dólares, pero todavía no tengo la cotización para convertirlos.</>
+                )}
+              </span>
+              {!cotizUsd && (
+                <Button variante="secondary" onClick={() => refrescar()} disabled={cargandoCotiz}>
+                  {cargandoCotiz ? 'Trayendo…' : 'Traer cotización'}
+                </Button>
+              )}
+            </div>
+          )}
+
           <div className="mb-3 flex flex-wrap items-center gap-3 text-sm">
             <span className="inline-flex items-center gap-1 text-slate-600">
               <CreditCard size={15} className="text-amber-600" /> {resumen.cantidad} consumos a la tarjeta
               {resumen.enCuotas > 0 ? ` (${resumen.enCuotas} en cuotas)` : ''}
+              {resumen.usd > 0 ? ` · ${resumen.usd} en dólares` : ''}
             </span>
             <span className="text-slate-400">·</span>
             <span className="font-medium text-slate-800">Total: {formatMoney(resumen.total)}</span>
@@ -270,14 +315,15 @@ export default function ImportarResumen() {
               <tbody>
                 {consumos.map((c, i) => {
                   const esUSD = c.moneda === 'USD'
+                  const sinCotiz = esUSD && !cotizUsd
                   const compra = esCompraEnCuotas(c)
                   return (
-                    <tr key={i} className={`border-b border-slate-100 last:border-0 ${esUSD ? 'opacity-50' : ''}`}>
+                    <tr key={i} className={`border-b border-slate-100 last:border-0 ${sinCotiz ? 'opacity-50' : ''}`}>
                       <td className="px-3 py-2.5">
                         <input
                           type="checkbox"
                           checked={incluidos[i] ?? false}
-                          disabled={esUSD}
+                          disabled={sinCotiz}
                           onChange={() => toggle(i)}
                           className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
                         />
@@ -292,22 +338,32 @@ export default function ImportarResumen() {
                         </div>
                       </td>
                       <td className="px-3 py-2.5">
-                        {esUSD ? (
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
-                            En dólares (no se importa)
-                          </span>
-                        ) : compra ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
-                            <CreditCard size={12} /> Compra {c.cuotaActual}/{c.cuotaTotal}
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                            <CreditCard size={12} /> 1 pago
-                          </span>
-                        )}
+                        <div className="flex flex-wrap items-center gap-1">
+                          {compra ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
+                              <CreditCard size={12} /> Compra {c.cuotaActual}/{c.cuotaTotal}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+                              <CreditCard size={12} /> 1 pago
+                            </span>
+                          )}
+                          {esUSD && (
+                            <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
+                              <DollarSign size={11} /> USD
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-3 py-2.5 text-right tabular text-slate-900">
-                        {esUSD ? `u$s ${(c.importe / 100).toFixed(2)}` : formatMoney(c.importe)}
+                        {esUSD ? (
+                          <div>
+                            <div className="text-xs text-slate-400">u$s {(c.importe / 100).toFixed(2)}</div>
+                            <div>{cotizUsd ? formatMoney(convertirUsdAArs(c.importe, cotizUsd)) : '—'}</div>
+                          </div>
+                        ) : (
+                          formatMoney(c.importe)
+                        )}
                       </td>
                     </tr>
                   )

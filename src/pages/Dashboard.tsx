@@ -24,10 +24,13 @@ import {
   Landmark,
   Repeat,
   CheckCircle2,
+  DollarSign,
+  RefreshCw,
 } from 'lucide-react'
 import PageShell from '@/components/PageShell'
 import EmptyState from '@/components/ui/EmptyState'
 import { useConfigStore } from '@/store/configStore'
+import { useCotizacionStore } from '@/store/cotizacionStore'
 import { useDatosFinancieros } from '@/store/useDatosFinancieros'
 import {
   resumenMes,
@@ -37,7 +40,7 @@ import {
   proximosVencimientos,
 } from '@/lib/agregados'
 import { conteoPagoServicios, pendientePagoServicios } from '@/lib/servicios'
-import { mesActual, ventanaMeses, etiquetaMes } from '@/lib/dates'
+import { mesActual, ventanaMeses, etiquetaMes, fechaLegible } from '@/lib/dates'
 import { formatMoney, formatMoneyCompact } from '@/lib/money'
 import { colorCategoria } from '@/lib/colores'
 import type { LucideIcon } from 'lucide-react'
@@ -84,6 +87,50 @@ function Panel({
   )
 }
 
+function CotizacionCard() {
+  const { cotizacion, cargando, error, refrescar } = useCotizacionStore()
+  const money = useConfigStore((s) => s.money)
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-5">
+      <div className="flex items-center gap-3">
+        <span className="rounded-lg bg-emerald-100 p-2 text-emerald-700">
+          <DollarSign size={22} />
+        </span>
+        <div>
+          <div className="text-sm font-medium text-slate-700">Dólar oficial · Banco Nación</div>
+          {cotizacion ? (
+            <div className="text-xs text-slate-500">
+              Compra {money(cotizacion.compra)} · Venta {money(cotizacion.venta)}
+              {' · '}al {fechaLegible(cotizacion.fecha)}
+            </div>
+          ) : (
+            <div className="text-xs text-slate-400">
+              {cargando ? 'Cargando cotización…' : error ?? 'Sin cotización todavía'}
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="flex items-center gap-3">
+        {cotizacion && (
+          <div className="text-right">
+            <div className="text-[11px] uppercase tracking-wide text-slate-400">Promedio</div>
+            <div className="text-2xl font-bold tabular text-emerald-700">{money(cotizacion.promedio)}</div>
+          </div>
+        )}
+        <button
+          onClick={() => refrescar()}
+          disabled={cargando}
+          className="rounded-lg border border-slate-200 bg-white p-2 text-slate-500 hover:text-emerald-600 disabled:opacity-50"
+          title="Actualizar cotización"
+          aria-label="Actualizar cotización"
+        >
+          <RefreshCw size={16} className={cargando ? 'animate-spin' : ''} />
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function Dashboard() {
   const config = useConfigStore((s) => s.config)
   const datos = useDatosFinancieros()
@@ -125,6 +172,9 @@ export default function Dashboard() {
       titulo="Dashboard"
       descripcion={`Panorama de ${etiquetaMes(mes, true)}`}
     >
+      <div className="mb-6">
+        <CotizacionCard />
+      </div>
       {!hayDatos ? (
         <EmptyState
           icon={Wallet}

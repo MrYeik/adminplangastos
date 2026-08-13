@@ -10,6 +10,7 @@ import type {
   Documento,
   Configuracion,
   Servicio,
+  Cotizacion,
 } from '@/models'
 
 export class GastosDB extends Dexie {
@@ -23,6 +24,7 @@ export class GastosDB extends Dexie {
   documentos!: Table<Documento, number>
   configuracion!: Table<Configuracion, number>
   servicios!: Table<Servicio, number>
+  cotizaciones!: Table<Cotizacion, string>
 
   constructor() {
     super('gastos-db')
@@ -40,6 +42,10 @@ export class GastosDB extends Dexie {
     // v2: servicios con débito recurrente (adheribles a tarjeta) y aumentos.
     this.version(2).stores({
       servicios: '++id, tarjetaId, categoria',
+    })
+    // v3: cache de cotizaciones del dólar oficial (BNA), una por día.
+    this.version(3).stores({
+      cotizaciones: 'fecha',
     })
   }
 }

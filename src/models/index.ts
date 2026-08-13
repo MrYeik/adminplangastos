@@ -71,6 +71,9 @@ export interface CompraTarjeta {
   importePorCuota: number // centavos
   observaciones?: string
   cuotasAdelantadas?: number // cuotas pagadas por adelantado (acortan el plan por el final)
+  moneda?: 'ARS' | 'USD' // moneda original de la compra (default ARS)
+  importeOriginalUSD?: number // si moneda='USD': importe por cuota en centavos de USD
+  cotizacion?: number // centavos ARS por USD usados para convertir (cotización del día)
   mesPrimerResumen?: string // 'YYYY-MM' resumen donde cae la 1ª cuota (según día de cierre)
   mesesPagados?: string[] // meses de resumen 'YYYY-MM' en que esta compra se pagó
   esServicio?: boolean // se refleja en la pestaña Servicios (sin duplicar valor)
@@ -154,6 +157,16 @@ export interface Documento {
   nombre: string
   mime: string
   blob: Blob
+}
+
+/** Cotización del dólar oficial (BNA) de un día. Importes en centavos ARS por USD. */
+export interface Cotizacion {
+  fecha: string // 'YYYY-MM-DD'
+  compra: number // centavos ARS por 1 USD
+  venta: number
+  promedio: number // (compra + venta) / 2
+  fuente: string // ej. 'BNA (dolarapi)'
+  obtenidoEn: string // ISO datetime en que se obtuvo
 }
 
 export interface Configuracion {
