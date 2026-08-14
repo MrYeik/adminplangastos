@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
+import { Link } from 'react-router-dom'
 import {
   Plus,
   Pencil,
@@ -11,6 +12,7 @@ import {
   RotateCcw,
   CheckCircle2,
   Circle,
+  Receipt,
 } from 'lucide-react'
 import PageShell from '@/components/PageShell'
 import Button from '@/components/ui/Button'
@@ -25,7 +27,7 @@ import { Campo, TextInput, Select } from '@/components/ui/Form'
 import { serviciosRepo } from '@/db/repos/servicios'
 import { useConfigStore } from '@/store/configStore'
 import { db } from '@/db/db'
-import { mesActual, etiquetaMes } from '@/lib/dates'
+import { mesActual, etiquetaMes, fechaLegible } from '@/lib/dates'
 import { formatMoney } from '@/lib/money'
 import {
   importeServicioEnMes,
@@ -161,14 +163,37 @@ export default function Servicios() {
     })
   }
 
-  const totalMensual = serviciosDelMes(servicios, mes)
+  const tarjetaPorId = new Map(tarjetas.map((t) => [t.id!, t]))
+  const grupoTarjeta = (id?: number | null) => `Tarjeta ${nombreTarjeta.get(id ?? -1) ?? ''}`.trim()
+
+  // Servicios que caen este mes según su origen.
   const activos = servicios.filter((s) => servicioActivoEnMes(s, mes))
-  const enTarjeta = activos.filter((s) => s.tarjetaId != null).length
-  const porCategoria = agruparPorCategoria(
-    servicios,
-    (s) => s.categoria,
-    (s) => importeServicioEnMes(s, mes),
-  )
+  const comprasMes = comprasServicio.filter((c) => importeCompraEnMes(c, mes) > 0)
+  const gastosMes = gastosServicio.filter((g) => gastoAplicaAMes(g, mes))
+  const hayAlgo = servicios.length > 0 || comprasMes.length > 0 || gastosMes.length > 0
+  const enTarjetaCount = activos.filter((s) => s.tarjetaId != null).length + comprasMes.length
+
+  // Total REAL del mes = comunes + adheridos a tarjeta + compras de tarjeta + gastos-servicio.
+  const totalServicios = serviciosDelMes(servicios, mes) // incluye adheridos a tarjeta
+  const totalCompras = comprasMes.reduce((a, c) => a + importeCompraEnMes(c, mes), 0)
+  const totalGastos = gastosMes.reduce((a, g) => a + g.importe, 0)
+  const real = totalServicios + totalCompras + totalGastos
+
+  // A PAGAR = lo que NO se paga con tarjeta (servicios sin tarjeta + gastos-servicio).
+  const aPagar =
+    activos.filter((s) => s.tarjetaId == null).reduce((a, s) => a + importeServicioEnMes(s, mes), 0) +
+    totalGastos
+
+  // Gráfico discriminativo: en tarjeta agrupa por tarjeta; el resto, por categoría.
+  const paresPie: { grupo: string; importe: number }[] = [
+    ...activos.map((s) => ({
+      grupo: s.tarjetaId != null ? grupoTarjeta(s.tarjetaId) : s.categoria,
+      importe: importeServicioEnMes(s, mes),
+    })),
+    ...comprasMes.map((c) => ({ grupo: grupoTarjeta(c.tarjetaId), importe: importeCompraEnMes(c, mes) })),
+    ...gastosMes.map((g) => ({ grupo: g.categoria, importe: g.importe })),
+  ]
+  const porGrupo = agruparPorCategoria(paresPie, (p) => p.grupo, (p) => p.importe)
 
   return (
     <PageShell
@@ -183,27 +208,30 @@ export default function Servicios() {
         </div>
       }
     >
-      {servicios.length > 0 && (
+      {hayAlgo && (
         <>
           <ResumenCategorias
-            etiquetaTotal={`Total servicios · ${etiquetaMes(mes)}`}
-            total={totalMensual}
-            data={porCategoria}
+            etiquetaTotal={`Servicios reales · ${etiquetaMes(mes)}`}
+            total={real}
+            data={porGrupo}
+            secundario={{ label: 'A pagar (sin tarjeta)', valor: aPagar }}
           />
           <div className="mb-5 grid grid-cols-2 gap-4 sm:max-w-md">
             <div className="rounded-xl border border-slate-200 bg-white p-4">
               <div className="text-xs text-slate-500">Activos este mes</div>
-              <div className="mt-1 text-xl font-bold text-slate-800 tabular">{activos.length}</div>
+              <div className="mt-1 text-xl font-bold text-slate-800 tabular">
+                {activos.length + comprasMes.length + gastosMes.length}
+              </div>
             </div>
             <div className="rounded-xl border border-slate-200 bg-white p-4">
               <div className="text-xs text-slate-500">En tarjeta</div>
-              <div className="mt-1 text-xl font-bold text-amber-600 tabular">{enTarjeta}</div>
+              <div className="mt-1 text-xl font-bold text-amber-600 tabular">{enTarjetaCount}</div>
             </div>
           </div>
         </>
       )}
 
-      {servicios.length === 0 ? (
+      {!hayAlgo ? (
         <EmptyState
           icon={Repeat}
           titulo="No hay servicios cargados"
@@ -335,47 +363,12 @@ export default function Servicios() {
                   </tr>
                 )
               })}
-            </tbody>
-          </table>
-        </div>
-      )}
 
-      {/* Reflejo: gastos/compras marcados como servicio (no se suman de nuevo) */}
-      {(gastosServicio.length > 0 || comprasServicio.length > 0) && (
-        <div className="mt-8">
-          <h2 className="mb-1 text-lg font-semibold text-slate-800">
-            También marcados como servicio
-          </h2>
-          <p className="mb-3 text-sm text-slate-500">
-            Vienen de Gastos y Tarjetas. Se muestran acá para entenderlos, pero{' '}
-            <strong>ya están contados</strong> en su sección — no se suman de nuevo.
-          </p>
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                  <th className="px-4 py-3 font-medium">Servicio</th>
-                  <th className="px-4 py-3 font-medium">Origen</th>
-                  <th className="px-4 py-3 text-right font-medium">Este mes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {gastosServicio.map((g) => (
-                  <tr key={`g${g.id}`} className="border-b border-slate-100 last:border-0">
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-slate-800">{g.descripcion}</div>
-                      <div className="text-xs text-slate-400">{g.categoria}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="rounded-full bg-rose-50 px-2 py-0.5 text-xs text-rose-700">Gasto</span>
-                    </td>
-                    <td className="px-4 py-3 text-right tabular text-slate-700">
-                      {formatMoney(gastoAplicaAMes(g, mes) ? g.importe : 0)}
-                    </td>
-                  </tr>
-                ))}
-                {comprasServicio.map((c) => (
-                  <tr key={`c${c.id}`} className="border-b border-slate-100 last:border-0">
+              {/* Servicios que se pagan con tarjeta (compras marcadas como servicio) */}
+              {comprasMes.map((c) => {
+                const t = tarjetaPorId.get(c.tarjetaId)
+                return (
+                  <tr key={`c${c.id}`} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5 font-medium text-slate-800">
                         {c.descripcion}
@@ -387,17 +380,73 @@ export default function Servicios() {
                       </div>
                       <div className="text-xs text-slate-400">{c.categoriaServicio || c.comercio}</div>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">Tarjeta</span>
+                    <td className="px-4 py-3 text-slate-600">
+                      <span className="inline-flex items-center gap-1 text-amber-600">
+                        <CreditCard size={13} /> {t?.nombre ?? 'Tarjeta'}
+                      </span>
                     </td>
-                    <td className="px-4 py-3 text-right tabular text-slate-700">
+                    <td className="px-4 py-3 text-slate-600">{t?.diaVencimiento ? `día ${t.diaVencimiento}` : '—'}</td>
+                    <td className="px-4 py-3 text-right font-medium tabular text-slate-900">
                       {formatMoney(importeCompraEnMes(c, mes))}
                     </td>
+                    <td className="px-4 py-3">
+                      <span className="w-fit rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">En tarjeta</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end">
+                        <Link
+                          to="/tarjetas"
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
+                          title="Se gestiona en Tarjetas"
+                        >
+                          <CreditCard size={16} />
+                        </Link>
+                      </div>
+                    </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                )
+              })}
+
+              {/* Gastos comunes marcados como servicio */}
+              {gastosMes.map((g) => {
+                const pagado = (g.mesesPagados ?? []).includes(mes)
+                return (
+                  <tr key={`g${g.id}`} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-slate-800">{g.descripcion}</div>
+                      <div className="text-xs text-slate-400">{g.categoria}</div>
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">{g.medioPago}</td>
+                    <td className="px-4 py-3 text-slate-600">{fechaLegible(g.fecha)}</td>
+                    <td className="px-4 py-3 text-right font-medium tabular text-slate-900">
+                      {formatMoney(g.importe)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col gap-1">
+                        <span className="w-fit rounded-full bg-rose-50 px-2 py-0.5 text-xs text-rose-700">Gasto</span>
+                        {pagado && (
+                          <span className="inline-flex w-fit items-center gap-0.5 rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
+                            <CheckCircle2 size={11} /> Pagado
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end">
+                        <Link
+                          to="/gastos"
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
+                          title="Se gestiona en Gastos"
+                        >
+                          <Receipt size={16} />
+                        </Link>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 

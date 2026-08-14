@@ -15,10 +15,12 @@ export default function ResumenCategorias({
   etiquetaTotal = 'Total del mes',
   total,
   data,
+  secundario,
 }: {
   etiquetaTotal?: string
   total: number
   data: DatoCategoria[]
+  secundario?: { label: string; valor: number }
 }) {
   const money = useConfigStore((s) => s.money)
   return (
@@ -26,6 +28,12 @@ export default function ResumenCategorias({
       <div className="flex flex-col justify-center">
         <div className="text-xs uppercase tracking-wide text-slate-500">{etiquetaTotal}</div>
         <div className="text-3xl font-bold tabular text-slate-900">{money(total)}</div>
+        {secundario && (
+          <div className="mt-1 text-sm text-slate-500">
+            {secundario.label}:{' '}
+            <strong className="tabular text-slate-700">{money(secundario.valor)}</strong>
+          </div>
+        )}
         {data.length > 0 && (
           <ul className="mt-3 space-y-1">
             {data.map((d, i) => (

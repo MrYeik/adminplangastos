@@ -215,9 +215,6 @@ export default function Dashboard() {
       titulo="Dashboard"
       descripcion={`Panorama de ${etiquetaMes(mes, true)}`}
     >
-      <div className="mb-6">
-        <CotizacionCard />
-      </div>
       {!hayDatos ? (
         <EmptyState
           icon={Wallet}
@@ -328,6 +325,9 @@ export default function Dashboard() {
               )}
             </Panel>
           </div>
+
+          {/* Cotización del dólar */}
+          <CotizacionCard />
 
           {/* Ingresos vs egresos */}
           <Panel titulo="Ingresos vs. egresos (12 meses)">
