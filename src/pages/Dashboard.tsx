@@ -216,11 +216,14 @@ export default function Dashboard() {
       descripcion={`Panorama de ${etiquetaMes(mes, true)}`}
     >
       {!hayDatos ? (
-        <EmptyState
-          icon={Wallet}
-          titulo="Todavía no hay datos"
-          descripcion="Cargá ingresos, gastos, tarjetas o préstamos y el panel se arma solo."
-        />
+        <div className="space-y-6">
+          <CotizacionCard />
+          <EmptyState
+            icon={Wallet}
+            titulo="Todavía no hay datos"
+            descripcion="Cargá ingresos, gastos, tarjetas o préstamos y el panel se arma solo."
+          />
+        </div>
       ) : (
         <div className="space-y-6">
           {/* 3 valores principales */}
