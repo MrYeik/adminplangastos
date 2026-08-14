@@ -280,7 +280,13 @@ export default function Tarjetas() {
     if (!finalizando) return
     const n = Math.min(Math.max(1, adelantar), restantesDe(finalizando))
     const ya = finalizando.cuotasAdelantadas ?? 0
-    await comprasRepo.actualizar(finalizando.id!, { cuotasAdelantadas: ya + n })
+    // Lo adelantado se paga ahora: se suma como un pago en el mes actual y se
+    // acortan las cuotas del final (el total se conserva).
+    const adelantos = [
+      ...(finalizando.adelantos ?? []),
+      { mes: mesRef, importe: n * finalizando.importePorCuota },
+    ]
+    await comprasRepo.actualizar(finalizando.id!, { cuotasAdelantadas: ya + n, adelantos })
     setFinalizando(null)
   }
 
@@ -325,6 +331,8 @@ export default function Tarjetas() {
       descripcion: unifForm.nombre.trim() || 'Plan de pago',
       comercio: '',
       fechaCompra: hoyISO(),
+      // La 1ª cuota del plan arranca en el período actual, no en el siguiente.
+      mesPrimerResumen: mesRef,
       cantidadCuotas: unifForm.cuotas,
       cuotaActual: 1,
       importePorCuota,
@@ -715,7 +723,9 @@ export default function Tarjetas() {
                               <div className="text-xs text-slate-400">
                                 {c.servicioRecurrente
                                   ? 'Recurrente'
-                                  : `Cuota ${r.cuotaActual} de ${r.cantidadCuotas}`}
+                                  : (c.adelantos ?? []).some((a) => a.mes === mesDetalle)
+                                    ? 'Pago anticipado'
+                                    : `Cuota ${r.cuotaActual} de ${r.cantidadCuotas}`}
                               </div>
                             </td>
                             <td className="px-3 py-2.5 text-right font-medium tabular text-slate-900">

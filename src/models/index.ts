@@ -71,6 +71,7 @@ export interface CompraTarjeta {
   importePorCuota: number // centavos
   observaciones?: string
   cuotasAdelantadas?: number // cuotas pagadas por adelantado (acortan el plan por el final)
+  adelantos?: { mes: string; importe: number }[] // pagos anticipados: se suman a ese mes de resumen
   moneda?: 'ARS' | 'USD' // moneda original de la compra (default ARS)
   importeOriginalUSD?: number // si moneda='USD': importe por cuota en centavos de USD
   cotizacion?: number // centavos ARS por USD usados para convertir (cotización del día)

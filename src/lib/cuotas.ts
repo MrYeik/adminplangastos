@@ -211,13 +211,24 @@ export function resumenDesde(
 export function importeCompraEnMes(
   compra: Pick<
     CompraTarjeta,
-    'fechaCompra' | 'mesPrimerResumen' | 'cantidadCuotas' | 'importePorCuota' | 'cuotasAdelantadas' | 'servicioRecurrente'
+    | 'fechaCompra'
+    | 'mesPrimerResumen'
+    | 'cantidadCuotas'
+    | 'importePorCuota'
+    | 'cuotasAdelantadas'
+    | 'servicioRecurrente'
+    | 'adelantos'
   >,
   mes: string,
 ): number {
   const inicio = mesInicioCompra(compra)
   if (compra.servicioRecurrente) return mes >= inicio ? compra.importePorCuota : 0
-  return importeCuotaEnMes(inicio, cuotasEfectivas(compra), compra.importePorCuota, mes)
+  const cuota = importeCuotaEnMes(inicio, cuotasEfectivas(compra), compra.importePorCuota, mes)
+  // Pagos anticipados: el importe adelantado se factura en el mes en que se pagó.
+  const adelanto = (compra.adelantos ?? [])
+    .filter((a) => a.mes === mes)
+    .reduce((s, a) => s + a.importe, 0)
+  return cuota + adelanto
 }
 
 export function resumenCompra(

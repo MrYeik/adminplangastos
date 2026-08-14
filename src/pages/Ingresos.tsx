@@ -9,9 +9,12 @@ import EmptyState from '@/components/ui/EmptyState'
 import MoneyInput from '@/components/ui/MoneyInput'
 import { Campo, TextInput, Checkbox } from '@/components/ui/Form'
 import BotonAdjuntos from '@/components/BotonAdjuntos'
+import MonthNav from '@/components/ui/MonthNav'
+import ResumenCategorias, { agruparPorCategoria } from '@/components/ResumenCategorias'
 import { ingresosRepo } from '@/db/repos/ingresos'
 import { useConfigStore } from '@/store/configStore'
-import { hoyISO, fechaLegible } from '@/lib/dates'
+import { ingresoAplicaAMes } from '@/lib/agregados'
+import { hoyISO, fechaLegible, mesActual, etiquetaMes } from '@/lib/dates'
 import type { Ingreso } from '@/models'
 
 const CATEGORIAS_SUGERIDAS = [
@@ -38,6 +41,7 @@ export default function Ingresos() {
   const [form, setForm] = useState<Omit<Ingreso, 'id'> | null>(null)
   const [editId, setEditId] = useState<number | null>(null)
   const [aBorrar, setABorrar] = useState<Ingreso | null>(null)
+  const [mes, setMes] = useState(mesActual())
 
   const abrirNuevo = () => {
     setEditId(null)
@@ -56,41 +60,31 @@ export default function Ingresos() {
     cerrar()
   }
 
-  const total = ingresos.reduce((acc, i) => acc + i.importe, 0)
-  const totalMensualRecurrenteMes = ingresos
-    .filter((i) => i.repeticionMensual)
-    .reduce((acc, i) => acc + i.importe, 0)
+  // Ingresos que aplican al mes elegido (recurrentes + los del mes).
+  const ingresosDelMes = ingresos.filter((i) => ingresoAplicaAMes(i, mes))
+  const total = ingresosDelMes.reduce((acc, i) => acc + i.importe, 0)
+  const porCategoria = agruparPorCategoria(ingresosDelMes, (i) => i.categoria, (i) => i.importe)
 
   return (
     <PageShell
       titulo="Ingresos"
-      descripcion="Sueldos, aguinaldo, horas extra y otros ingresos"
+      descripcion="Sueldos, aguinaldo, horas extra y otros ingresos, mes a mes"
       acciones={
-        <Button onClick={abrirNuevo}>
-          <Plus size={18} /> Nuevo ingreso
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <MonthNav mes={mes} onCambiar={setMes} />
+          <Button onClick={abrirNuevo}>
+            <Plus size={18} /> Nuevo ingreso
+          </Button>
+        </div>
       }
     >
-      {ingresos.length > 0 && (
-        <div className="mb-5 grid grid-cols-2 gap-4 sm:max-w-md">
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <div className="text-xs text-slate-500">Total registrado</div>
-            <div className="mt-1 text-xl font-bold text-emerald-600 tabular">{money(total)}</div>
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <div className="text-xs text-slate-500">Recurrente mensual</div>
-            <div className="mt-1 text-xl font-bold text-slate-800 tabular">
-              {money(totalMensualRecurrenteMes)}
-            </div>
-          </div>
-        </div>
-      )}
+      <ResumenCategorias etiquetaTotal={`Total ingresos · ${etiquetaMes(mes)}`} total={total} data={porCategoria} />
 
-      {ingresos.length === 0 ? (
+      {ingresosDelMes.length === 0 ? (
         <EmptyState
           icon={TrendingUp}
-          titulo="Todavía no hay ingresos"
-          descripcion="Cargá tu sueldo y otros ingresos para empezar."
+          titulo="Sin ingresos este mes"
+          descripcion="No hay ingresos para el mes seleccionado."
           accion={
             <Button onClick={abrirNuevo}>
               <Plus size={18} /> Nuevo ingreso
@@ -111,7 +105,7 @@ export default function Ingresos() {
               </tr>
             </thead>
             <tbody>
-              {ingresos.map((i) => (
+              {ingresosDelMes.map((i) => (
                 <tr key={i.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                   <td className="px-4 py-3">
                     <div className="font-medium text-slate-800">{i.descripcion}</div>

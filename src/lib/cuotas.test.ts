@@ -169,6 +169,21 @@ describe('motor de cuotas', () => {
     expect(resumenCompra(compra, '2026-08').cuotaActual).toBe(1)
   })
 
+  it('un pago anticipado se factura en su mes (además de conservar el total)', () => {
+    // TV 12×$50.000 desde jul-2026. En oct adelantamos las últimas 3 cuotas.
+    const compra = {
+      fechaCompra: '2026-07-15',
+      cantidadCuotas: 12,
+      importePorCuota: 5_000_000,
+      cuotasAdelantadas: 3, // se acortan 3 del final (quedan 9)
+      adelantos: [{ mes: '2026-10', importe: 15_000_000 }], // 3 × 50.000 pagadas en oct
+    }
+    // Oct: cuota normal (50.000) + adelanto (150.000) = 200.000
+    expect(importeCompraEnMes(compra, '2026-10')).toBe(20_000_000)
+    // El plan ahora termina antes: mar-2027 (jul + 8) ya no factura cuota normal…
+    expect(importeCompraEnMes(compra, '2027-04')).toBe(0)
+  })
+
   it('resumen de préstamo', () => {
     const prestamo = { fecha: '2026-08-10', cantidadCuotas: 36, valorCuota: 15_000_000 }
     const r = resumenPrestamo(prestamo, '2026-08')

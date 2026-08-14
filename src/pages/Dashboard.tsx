@@ -18,12 +18,9 @@ import {
   Receipt,
   Wallet,
   CreditCard,
-  AlertTriangle,
-  PiggyBank,
   CalendarClock,
   Landmark,
   Repeat,
-  CheckCircle2,
   DollarSign,
   RefreshCw,
 } from 'lucide-react'
@@ -37,10 +34,8 @@ import {
   serieMensual,
   egresosPorCategoria,
   deudaPendiente,
-  proximosVencimientos,
 } from '@/lib/agregados'
-import { conteoPagoServicios, pendientePagoServicios } from '@/lib/servicios'
-import { mesActual, ventanaMeses, etiquetaMes, fechaLegible } from '@/lib/dates'
+import { mesActual, ventanaMeses, etiquetaMes, fechaLegible, sumarMeses } from '@/lib/dates'
 import { formatMoney, formatMoneyCompact } from '@/lib/money'
 import { colorCategoria } from '@/lib/colores'
 import type { LucideIcon } from 'lucide-react'
@@ -66,6 +61,48 @@ function Kpi({
       </div>
       <div className="mt-2 text-2xl font-bold text-slate-900 tabular">{valor}</div>
       {sub && <div className="mt-1 text-xs text-slate-400">{sub}</div>}
+    </div>
+  )
+}
+
+const TONOS: Record<string, { bg: string; text: string; icon: string }> = {
+  emerald: { bg: 'from-emerald-50 to-white ring-emerald-100', text: 'text-emerald-700', icon: 'text-emerald-600' },
+  rose: { bg: 'from-rose-50 to-white ring-rose-100', text: 'text-rose-700', icon: 'text-rose-600' },
+  brand: { bg: 'from-brand-50 to-white ring-brand-100', text: 'text-brand-700', icon: 'text-brand-600' },
+}
+
+function MainKpi({
+  label,
+  valor,
+  icon: Icon,
+  tono,
+  sub,
+}: {
+  label: string
+  valor: string
+  icon: LucideIcon
+  tono: 'emerald' | 'rose' | 'brand'
+  sub?: string
+}) {
+  const t = TONOS[tono]
+  return (
+    <div className={`rounded-2xl bg-gradient-to-br p-6 shadow-sm ring-1 ${t.bg}`}>
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium text-slate-600">{label}</span>
+        <Icon className={t.icon} size={22} />
+      </div>
+      <div className={`mt-2 text-3xl font-bold tabular ${t.text}`}>{valor}</div>
+      {sub && <div className="mt-1 text-xs text-slate-400">{sub}</div>}
+    </div>
+  )
+}
+
+function KpiMini({ label, valor, sub }: { label: string; valor: string; sub?: string }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+      <div className="text-xs text-slate-500">{label}</div>
+      <div className="mt-1 text-lg font-semibold tabular text-slate-700">{valor}</div>
+      {sub && <div className="text-[11px] text-slate-400">{sub}</div>}
     </div>
   )
 }
@@ -139,8 +176,16 @@ export default function Dashboard() {
   const r = resumenMes(datos, mes)
   const deuda = deudaPendiente(datos.compras, datos.prestamos, mes)
   const tasaAhorro = r.ingresos > 0 ? Math.round((r.disponible / r.ingresos) * 100) : 0
-  const conteoPago = conteoPagoServicios(datos.servicios ?? [], mes)
-  const pendientePago = pendientePagoServicios(datos.servicios ?? [], mes)
+
+  // Previsión del mes siguiente (importes ya comprometidos + recurrentes).
+  const mesSiguiente = sumarMeses(mes, 1)
+  const rProx = resumenMes(datos, mesSiguiente)
+  const previsto = [
+    { label: 'Tarjetas', valor: rProx.cuotasTarjeta, icon: CreditCard, color: 'bg-amber-50 text-amber-600' },
+    { label: 'Gastos', valor: rProx.gastos, icon: Receipt, color: 'bg-rose-50 text-rose-600' },
+    { label: 'Servicios', valor: rProx.servicios, icon: Repeat, color: 'bg-cyan-50 text-cyan-600' },
+    { label: 'Préstamos', valor: rProx.cuotasPrestamo, icon: Landmark, color: 'bg-indigo-50 text-indigo-600' },
+  ].filter((p) => p.valor > 0)
 
   const ventana = ventanaMeses(config?.mesInicioProyeccion ?? mes, 12)
   const serie = serieMensual(datos, ventana)
@@ -155,8 +200,6 @@ export default function Dashboard() {
     name: d.categoria,
     value: d.total,
   }))
-
-  const vencimientos = proximosVencimientos(datos.compras, datos.prestamos, mes).slice(0, 6)
 
   const hayDatos =
     datos.ingresos.length > 0 ||
@@ -183,24 +226,43 @@ export default function Dashboard() {
         />
       ) : (
         <div className="space-y-6">
-          {/* KPIs */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <Kpi label="Ingreso mensual" valor={formatMoney(r.ingresos)} icon={TrendingUp} color="text-emerald-600" />
-            <Kpi label="Gastos del mes" valor={formatMoney(r.gastos)} icon={Receipt} color="text-rose-600" sub={`Fijos ${formatMoney(r.gastosFijos)} · Variables ${formatMoney(r.gastosVariables)}`} />
-            <Kpi label="Comprometido en cuotas" valor={formatMoney(r.cuotas)} icon={CreditCard} color="text-amber-600" sub={`Tarjetas ${formatMoney(r.cuotasTarjeta)} · Préstamos ${formatMoney(r.cuotasPrestamo)}`} />
-            <Kpi label="Servicios del mes" valor={formatMoney(r.servicios)} icon={Repeat} color="text-cyan-600" sub="Débitos automáticos recurrentes" />
-            {conteoPago.total > 0 && (
-              <Kpi
-                label="Pendiente de pago"
-                valor={formatMoney(pendientePago)}
-                icon={CheckCircle2}
-                color={pendientePago > 0 ? 'text-rose-600' : 'text-emerald-600'}
-                sub={`${conteoPago.pagados} de ${conteoPago.total} servicios pagados`}
-              />
-            )}
-            <Kpi label="Disponible" valor={formatMoney(r.disponible)} icon={Wallet} color={r.disponible >= 0 ? 'text-brand-600' : 'text-rose-600'} sub="Ingresos − gastos − cuotas − servicios" />
-            <Kpi label="Deuda pendiente" valor={formatMoney(deuda)} icon={AlertTriangle} color="text-orange-600" sub="Total a pagar (tarjetas + préstamos)" />
-            <Kpi label="Capacidad de ahorro" valor={`${tasaAhorro}%`} icon={PiggyBank} color="text-indigo-600" sub={`${formatMoney(r.disponible)} del ingreso`} />
+          {/* 3 valores principales */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <MainKpi label="Ingresos" valor={formatMoney(r.ingresos)} icon={TrendingUp} tono="emerald" />
+            <MainKpi
+              label="Gastos"
+              valor={formatMoney(r.egresos)}
+              icon={Receipt}
+              tono="rose"
+              sub="Gastos + tarjetas + préstamos + servicios"
+            />
+            <MainKpi
+              label="Saldo"
+              valor={formatMoney(r.disponible)}
+              icon={Wallet}
+              tono={r.disponible >= 0 ? 'brand' : 'rose'}
+              sub="Ingresos − gastos"
+            />
+          </div>
+
+          {/* Detalle del mes */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Kpi
+              label="Gastos del mes"
+              valor={formatMoney(r.gastos)}
+              icon={Receipt}
+              color="text-rose-600"
+              sub={`Fijos ${formatMoney(r.gastosFijos)} · Variables ${formatMoney(r.gastosVariables)}`}
+            />
+            <Kpi label="Servicios del mes" valor={formatMoney(r.servicios)} icon={Repeat} color="text-cyan-600" sub="Débitos y recurrentes" />
+            <Kpi label="Cuotas de préstamos" valor={formatMoney(r.cuotasPrestamo)} icon={Landmark} color="text-indigo-600" sub="Cuotas del mes" />
+          </div>
+
+          {/* Indicadores secundarios */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <KpiMini label="Comprometido en cuotas" valor={formatMoney(r.cuotasTarjeta)} sub="Cuotas de tarjeta del mes" />
+            <KpiMini label="Deuda pendiente" valor={formatMoney(deuda)} sub="Total a pagar (tarjetas + préstamos)" />
+            <KpiMini label="Capacidad de ahorro" valor={`${tasaAhorro}%`} sub={`${formatMoney(r.disponible)} del ingreso`} />
           </div>
 
           {/* Distribución + próximos vencimientos */}
@@ -235,38 +297,34 @@ export default function Dashboard() {
               )}
             </Panel>
 
-            <Panel titulo="Próximos vencimientos">
-              {vencimientos.length === 0 ? (
-                <p className="py-12 text-center text-sm text-slate-400">
-                  No hay cuotas pendientes.
+            <Panel titulo={`Previsto ${etiquetaMes(mesSiguiente, true)}`}>
+              <div className="mb-3 flex items-center gap-2 text-xs text-slate-400">
+                <CalendarClock size={13} /> Lo que ya está comprometido para el mes que viene
+              </div>
+              {previsto.length === 0 ? (
+                <p className="py-10 text-center text-sm text-slate-400">
+                  No hay egresos previstos para {etiquetaMes(mesSiguiente, true)}.
                 </p>
               ) : (
-                <ul className="divide-y divide-slate-100">
-                  {vencimientos.map((v, i) => (
-                    <li key={i} className="flex items-center justify-between py-3">
-                      <div className="flex items-center gap-3">
-                        <span
-                          className={`rounded-lg p-2 ${
-                            v.tipo === 'tarjeta'
-                              ? 'bg-amber-50 text-amber-600'
-                              : 'bg-indigo-50 text-indigo-600'
-                          }`}
-                        >
-                          {v.tipo === 'tarjeta' ? <CreditCard size={16} /> : <Landmark size={16} />}
-                        </span>
-                        <div>
-                          <div className="text-sm font-medium text-slate-800">{v.descripcion}</div>
-                          <div className="flex items-center gap-1 text-xs text-slate-400">
-                            <CalendarClock size={12} /> {etiquetaMes(v.mes, true)}
-                          </div>
+                <>
+                  <ul className="divide-y divide-slate-100">
+                    {previsto.map((p) => (
+                      <li key={p.label} className="flex items-center justify-between py-3">
+                        <div className="flex items-center gap-3">
+                          <span className={`rounded-lg p-2 ${p.color}`}>
+                            <p.icon size={16} />
+                          </span>
+                          <span className="text-sm font-medium text-slate-700">{p.label}</span>
                         </div>
-                      </div>
-                      <span className="font-medium tabular text-slate-900">
-                        {formatMoney(v.importe)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+                        <span className="font-medium tabular text-slate-900">{formatMoney(p.valor)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-3">
+                    <span className="text-sm font-semibold text-slate-600">Total previsto</span>
+                    <span className="text-lg font-bold tabular text-rose-600">{formatMoney(rProx.egresos)}</span>
+                  </div>
+                </>
               )}
             </Panel>
           </div>

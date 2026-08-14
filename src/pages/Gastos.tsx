@@ -10,11 +10,12 @@ import MoneyInput from '@/components/ui/MoneyInput'
 import MonthNav from '@/components/ui/MonthNav'
 import { Campo, TextInput, Select, Checkbox } from '@/components/ui/Form'
 import BotonAdjuntos from '@/components/BotonAdjuntos'
+import ResumenCategorias, { agruparPorCategoria } from '@/components/ResumenCategorias'
 import { gastosRepo } from '@/db/repos/gastos'
 import { useConfigStore } from '@/store/configStore'
 import { gastoAplicaAMes } from '@/lib/agregados'
 import { estaPagado, togglePagoMes } from '@/lib/pagos'
-import { hoyISO, fechaLegible, mesActual } from '@/lib/dates'
+import { hoyISO, fechaLegible, mesActual, etiquetaMes } from '@/lib/dates'
 import type { Gasto, TipoGasto } from '@/models'
 
 const VACIO: Omit<Gasto, 'id'> = {
@@ -76,6 +77,7 @@ export default function Gastos() {
     .filter((g) => estaPagado(g.mesesPagados, mes))
     .reduce((a, g) => a + g.importe, 0)
   const falta = total - pagado
+  const porCategoria = agruparPorCategoria(gastosDelMes, (g) => g.categoria, (g) => g.importe)
 
   return (
     <PageShell
@@ -90,11 +92,9 @@ export default function Gastos() {
         </div>
       }
     >
-      <div className="mb-5 grid grid-cols-3 gap-4 sm:max-w-2xl">
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <div className="text-xs text-slate-500">Total</div>
-          <div className="mt-1 text-xl font-bold text-slate-800 tabular">{money(total)}</div>
-        </div>
+      <ResumenCategorias etiquetaTotal={`Total gastos · ${etiquetaMes(mes)}`} total={total} data={porCategoria} />
+
+      <div className="mb-5 grid grid-cols-2 gap-4 sm:max-w-md">
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <div className="text-xs text-slate-500">Pagados</div>
           <div className="mt-1 text-xl font-bold text-emerald-600 tabular">{money(pagado)}</div>

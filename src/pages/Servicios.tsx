@@ -19,6 +19,8 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import EmptyState from '@/components/ui/EmptyState'
 import MoneyInput from '@/components/ui/MoneyInput'
 import BotonAdjuntos from '@/components/BotonAdjuntos'
+import MonthNav from '@/components/ui/MonthNav'
+import ResumenCategorias, { agruparPorCategoria } from '@/components/ResumenCategorias'
 import { Campo, TextInput, Select } from '@/components/ui/Form'
 import { serviciosRepo } from '@/db/repos/servicios'
 import { useConfigStore } from '@/store/configStore'
@@ -64,7 +66,7 @@ const vacio = (categoria: string): FormState => ({
 
 export default function Servicios() {
   const config = useConfigStore((s) => s.config)
-  const mes = mesActual()
+  const [mes, setMes] = useState(mesActual())
   const servicios = useLiveQuery(() => serviciosRepo.todos(), [], [] as Servicio[])
   const tarjetas = useLiveQuery(() => db.tarjetas.toArray(), [], [] as Tarjeta[])
   // Gastos y compras marcados como "servicio" (se muestran acá sin sumar de nuevo).
@@ -162,34 +164,43 @@ export default function Servicios() {
   const totalMensual = serviciosDelMes(servicios, mes)
   const activos = servicios.filter((s) => servicioActivoEnMes(s, mes))
   const enTarjeta = activos.filter((s) => s.tarjetaId != null).length
+  const porCategoria = agruparPorCategoria(
+    servicios,
+    (s) => s.categoria,
+    (s) => importeServicioEnMes(s, mes),
+  )
 
   return (
     <PageShell
       titulo="Servicios"
-      descripcion="Débitos automáticos recurrentes (streaming, seguros, etc.), con aumentos"
+      descripcion="Débitos automáticos recurrentes (streaming, seguros, etc.), mes a mes"
       acciones={
-        <Button onClick={nuevo}>
-          <Plus size={18} /> Nuevo servicio
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <MonthNav mes={mes} onCambiar={setMes} />
+          <Button onClick={nuevo}>
+            <Plus size={18} /> Nuevo servicio
+          </Button>
+        </div>
       }
     >
       {servicios.length > 0 && (
-        <div className="mb-5 grid grid-cols-2 gap-4 sm:max-w-2xl sm:grid-cols-3">
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <div className="text-xs text-slate-500">Total mensual</div>
-            <div className="mt-1 text-xl font-bold text-rose-600 tabular">
-              {formatMoney(totalMensual)}
+        <>
+          <ResumenCategorias
+            etiquetaTotal={`Total servicios · ${etiquetaMes(mes)}`}
+            total={totalMensual}
+            data={porCategoria}
+          />
+          <div className="mb-5 grid grid-cols-2 gap-4 sm:max-w-md">
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className="text-xs text-slate-500">Activos este mes</div>
+              <div className="mt-1 text-xl font-bold text-slate-800 tabular">{activos.length}</div>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className="text-xs text-slate-500">En tarjeta</div>
+              <div className="mt-1 text-xl font-bold text-amber-600 tabular">{enTarjeta}</div>
             </div>
           </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <div className="text-xs text-slate-500">Activos</div>
-            <div className="mt-1 text-xl font-bold text-slate-800 tabular">{activos.length}</div>
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <div className="text-xs text-slate-500">En tarjeta</div>
-            <div className="mt-1 text-xl font-bold text-amber-600 tabular">{enTarjeta}</div>
-          </div>
-        </div>
+        </>
       )}
 
       {servicios.length === 0 ? (
