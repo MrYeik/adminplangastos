@@ -13,7 +13,8 @@ import MonthNav from '@/components/ui/MonthNav'
 import ResumenCategorias, { agruparPorCategoria } from '@/components/ResumenCategorias'
 import { ingresosRepo } from '@/db/repos/ingresos'
 import { useConfigStore } from '@/store/configStore'
-import { ingresoAplicaAMes } from '@/lib/agregados'
+import { useDatosFinancieros } from '@/store/useDatosFinancieros'
+import { ingresoAplicaAMes, saldoArrastrado } from '@/lib/agregados'
 import { hoyISO, fechaLegible, mesActual, etiquetaMes } from '@/lib/dates'
 import type { Ingreso } from '@/models'
 
@@ -36,6 +37,8 @@ const VACIO: Omit<Ingreso, 'id'> = {
 
 export default function Ingresos() {
   const money = useConfigStore((s) => s.money)
+  const config = useConfigStore((s) => s.config)
+  const datos = useDatosFinancieros()
   const ingresos = useLiveQuery(() => ingresosRepo.todos(), [], [] as Ingreso[])
 
   const [form, setForm] = useState<Omit<Ingreso, 'id'> | null>(null)
@@ -62,8 +65,16 @@ export default function Ingresos() {
 
   // Ingresos que aplican al mes elegido (recurrentes + los del mes).
   const ingresosDelMes = ingresos.filter((i) => ingresoAplicaAMes(i, mes))
-  const total = ingresosDelMes.reduce((acc, i) => acc + i.importe, 0)
+  const totalBase = ingresosDelMes.reduce((acc, i) => acc + i.importe, 0)
+
+  // Saldo libre arrastrado del mes anterior (cuenta corriente), como ingreso.
+  const mesInicio = config?.mesInicioProyeccion ?? mes
+  const arrastre = saldoArrastrado(datos, mes, mesInicio)
+  const total = totalBase + arrastre
+
   const porCategoria = agruparPorCategoria(ingresosDelMes, (i) => i.categoria, (i) => i.importe)
+  const datosPie = arrastre > 0 ? [{ name: 'Saldo mes anterior', value: arrastre }, ...porCategoria] : porCategoria
+  const hayFilas = ingresosDelMes.length > 0 || arrastre !== 0
 
   return (
     <PageShell
@@ -78,9 +89,9 @@ export default function Ingresos() {
         </div>
       }
     >
-      <ResumenCategorias etiquetaTotal={`Total ingresos · ${etiquetaMes(mes)}`} total={total} data={porCategoria} />
+      <ResumenCategorias etiquetaTotal={`Total ingresos · ${etiquetaMes(mes)}`} total={total} data={datosPie} />
 
-      {ingresosDelMes.length === 0 ? (
+      {!hayFilas ? (
         <EmptyState
           icon={TrendingUp}
           titulo="Sin ingresos este mes"
@@ -105,6 +116,25 @@ export default function Ingresos() {
               </tr>
             </thead>
             <tbody>
+              {arrastre !== 0 && (
+                <tr className="border-b border-slate-100 bg-emerald-50/40">
+                  <td className="px-4 py-3">
+                    <div className="font-medium text-slate-800">Saldo del mes anterior</div>
+                    <div className="text-xs text-slate-400">Lo que quedó libre y se arrastra</div>
+                  </td>
+                  <td className="px-4 py-3 text-slate-500">Saldo</td>
+                  <td className="px-4 py-3 text-slate-400">—</td>
+                  <td className={`px-4 py-3 text-right font-medium tabular ${arrastre >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {money(arrastre)}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
+                      automático
+                    </span>
+                  </td>
+                  <td className="px-4 py-3"></td>
+                </tr>
+              )}
               {ingresosDelMes.map((i) => (
                 <tr key={i.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                   <td className="px-4 py-3">

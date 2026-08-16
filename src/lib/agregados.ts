@@ -2,7 +2,7 @@
 // para un mes dado, considerando la recurrencia de ingresos/gastos.
 
 import type { Ingreso, Gasto, CompraTarjeta, Prestamo, Servicio, TipoGasto } from '@/models'
-import { mesDeFecha } from './dates'
+import { mesDeFecha, sumarMeses } from './dates'
 import {
   importeCuotaPrestamoEnMes,
   importeCompraEnMes,
@@ -100,6 +100,20 @@ export function resumenMes(d: DatosFinancieros, mes: string): ResumenMes {
 /** Serie de resúmenes para una ventana de meses. */
 export function serieMensual(d: DatosFinancieros, meses: string[]): ResumenMes[] {
   return meses.map((m) => resumenMes(d, m))
+}
+
+/**
+ * Saldo que se arrastra desde los meses anteriores (cuenta corriente): suma del
+ * disponible de cada mes desde `mesInicio` hasta el mes previo a `mes`. Puede
+ * ser negativo (si se gastó de más). 0 en el mes de inicio o antes.
+ */
+export function saldoArrastrado(d: DatosFinancieros, mes: string, mesInicio: string): number {
+  if (mes <= mesInicio) return 0
+  let acc = 0
+  for (let k = mesInicio; k < mes; k = sumarMeses(k, 1)) {
+    acc += resumenMes(d, k).disponible
+  }
+  return acc
 }
 
 export interface FilaDesglose {

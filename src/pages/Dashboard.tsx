@@ -24,8 +24,10 @@ import {
   DollarSign,
   RefreshCw,
 } from 'lucide-react'
+import { useState } from 'react'
 import PageShell from '@/components/PageShell'
 import EmptyState from '@/components/ui/EmptyState'
+import MonthNav from '@/components/ui/MonthNav'
 import { useConfigStore } from '@/store/configStore'
 import { useCotizacionStore } from '@/store/cotizacionStore'
 import { useDatosFinancieros } from '@/store/useDatosFinancieros'
@@ -34,6 +36,7 @@ import {
   serieMensual,
   egresosPorCategoria,
   deudaPendiente,
+  saldoArrastrado,
 } from '@/lib/agregados'
 import { mesActual, ventanaMeses, etiquetaMes, fechaLegible, sumarMeses } from '@/lib/dates'
 import { formatMoney, formatMoneyCompact } from '@/lib/money'
@@ -171,11 +174,18 @@ function CotizacionCard() {
 export default function Dashboard() {
   const config = useConfigStore((s) => s.config)
   const datos = useDatosFinancieros()
-  const mes = mesActual()
+  const [mes, setMes] = useState(mesActual())
 
   const r = resumenMes(datos, mes)
   const deuda = deudaPendiente(datos.compras, datos.prestamos, mes)
-  const tasaAhorro = r.ingresos > 0 ? Math.round((r.disponible / r.ingresos) * 100) : 0
+
+  // Saldo que viene arrastrado de meses anteriores (cuenta corriente).
+  const mesInicio = config?.mesInicioProyeccion ?? mes
+  const arrastre = saldoArrastrado(datos, mes, mesInicio)
+  const ingresosConArrastre = r.ingresos + arrastre
+  const saldo = ingresosConArrastre - r.egresos
+  const tasaAhorro =
+    ingresosConArrastre > 0 ? Math.round((saldo / ingresosConArrastre) * 100) : 0
 
   // Previsión del mes siguiente (importes ya comprometidos + recurrentes).
   const mesSiguiente = sumarMeses(mes, 1)
@@ -214,6 +224,7 @@ export default function Dashboard() {
     <PageShell
       titulo="Dashboard"
       descripcion={`Panorama de ${etiquetaMes(mes, true)}`}
+      acciones={<MonthNav mes={mes} onCambiar={setMes} />}
     >
       {!hayDatos ? (
         <div className="space-y-6">
@@ -228,7 +239,13 @@ export default function Dashboard() {
         <div className="space-y-6">
           {/* 3 valores principales */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <MainKpi label="Ingresos" valor={formatMoney(r.ingresos)} icon={TrendingUp} tono="emerald" />
+            <MainKpi
+              label="Ingresos"
+              valor={formatMoney(ingresosConArrastre)}
+              icon={TrendingUp}
+              tono="emerald"
+              sub={arrastre !== 0 ? `Incluye saldo anterior ${formatMoney(arrastre)}` : undefined}
+            />
             <MainKpi
               label="Gastos"
               valor={formatMoney(r.egresos)}
@@ -238,10 +255,10 @@ export default function Dashboard() {
             />
             <MainKpi
               label="Saldo"
-              valor={formatMoney(r.disponible)}
+              valor={formatMoney(saldo)}
               icon={Wallet}
-              tono={r.disponible >= 0 ? 'brand' : 'rose'}
-              sub="Ingresos − gastos"
+              tono={saldo >= 0 ? 'brand' : 'rose'}
+              sub="Ingresos (con saldo anterior) − gastos"
             />
           </div>
 
@@ -262,7 +279,7 @@ export default function Dashboard() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <KpiMini label="Comprometido en cuotas" valor={formatMoney(r.cuotasTarjeta)} sub="Cuotas de tarjeta del mes" />
             <KpiMini label="Deuda pendiente" valor={formatMoney(deuda)} sub="Total a pagar (tarjetas + préstamos)" />
-            <KpiMini label="Capacidad de ahorro" valor={`${tasaAhorro}%`} sub={`${formatMoney(r.disponible)} del ingreso`} />
+            <KpiMini label="Capacidad de ahorro" valor={`${tasaAhorro}%`} sub={`${formatMoney(saldo)} de saldo`} />
           </div>
 
           {/* Distribución + próximos vencimientos */}
