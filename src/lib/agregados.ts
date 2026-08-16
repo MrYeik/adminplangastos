@@ -56,6 +56,34 @@ export function gastosPagadosDelMes(gastos: Gasto[], mes: string): number {
     .reduce((a, g) => a + importeVigenteEnMes(g.importe, g.importes, mes), 0)
 }
 
+/** ¿Un ingreso está marcado como depositado/cobrado en un mes? */
+export function ingresoCobradoEnMes(i: Ingreso, mes: string): boolean {
+  return ingresoAplicaAMes(i, mes) && estaPagado(i.mesesCobrado, mes)
+}
+
+/** Total de ingresos del mes ya depositados (marcados como cobrados). */
+export function ingresosCobradosDelMes(ingresos: Ingreso[], mes: string): number {
+  return ingresos
+    .filter((i) => ingresoCobradoEnMes(i, mes))
+    .reduce((a, i) => a + importeVigenteEnMes(i.importe, i.importes, mes), 0)
+}
+
+/**
+ * Disponible REAL (caja) de un mes: solo lo cobrado menos lo que efectivamente
+ * sale. Los ingresos suman recién al marcarse depositados; de los gastos, solo
+ * restan los pagados; los débitos automáticos (servicios, tarjeta, préstamos)
+ * restan siempre. Sirve para el saldo del mes en curso.
+ */
+export function disponibleEfectivoDelMes(d: DatosFinancieros, mes: string): number {
+  const cobrado = ingresosCobradosDelMes(d.ingresos, mes)
+  const gastosPag = gastosPagadosDelMes(d.gastos, mes)
+  const autos =
+    serviciosDelMes(d.servicios ?? [], mes) +
+    cuotasTarjetaDelMes(d.compras, mes) +
+    cuotasPrestamoDelMes(d.prestamos, mes)
+  return cobrado - gastosPag - autos
+}
+
 export function cuotasPrestamoDelMes(prestamos: Prestamo[], mes: string): number {
   return prestamos.reduce((a, p) => a + importeCuotaPrestamoEnMes(p, mes), 0)
 }

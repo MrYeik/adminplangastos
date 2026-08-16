@@ -37,6 +37,8 @@ import {
   egresosPorCategoria,
   deudaPendiente,
   saldoArrastrado,
+  ingresosCobradosDelMes,
+  disponibleEfectivoDelMes,
 } from '@/lib/agregados'
 import { mesActual, ventanaMeses, etiquetaMes, fechaLegible, sumarMeses } from '@/lib/dates'
 import { formatMoney, formatMoneyCompact } from '@/lib/money'
@@ -182,10 +184,13 @@ export default function Dashboard() {
   // Saldo que viene arrastrado de meses anteriores (cuenta corriente).
   const mesInicio = config?.mesInicioProyeccion ?? mes
   const arrastre = saldoArrastrado(datos, mes, mesInicio)
-  const ingresosConArrastre = r.ingresos + arrastre
-  const saldo = ingresosConArrastre - r.egresos
-  const tasaAhorro =
-    ingresosConArrastre > 0 ? Math.round((saldo / ingresosConArrastre) * 100) : 0
+  const esMesActual = mes === mesActual()
+  const cobrado = ingresosCobradosDelMes(datos.ingresos, mes)
+  // El mes en curso usa la caja real (cobrado − pagado); los demás, lo previsto.
+  const disponibleReal = esMesActual ? disponibleEfectivoDelMes(datos, mes) : r.disponible
+  const saldo = arrastre + disponibleReal
+  const baseAhorro = r.ingresos + arrastre
+  const tasaAhorro = baseAhorro > 0 ? Math.round((saldo / baseAhorro) * 100) : 0
 
   // Previsión del mes siguiente (importes ya comprometidos + recurrentes).
   const mesSiguiente = sumarMeses(mes, 1)
@@ -241,10 +246,10 @@ export default function Dashboard() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <MainKpi
               label="Ingresos"
-              valor={formatMoney(ingresosConArrastre)}
+              valor={formatMoney(r.ingresos)}
               icon={TrendingUp}
               tono="emerald"
-              sub={arrastre !== 0 ? `Incluye saldo anterior ${formatMoney(arrastre)}` : undefined}
+              sub={esMesActual ? `Cobrado ${formatMoney(cobrado)} · a cobrar ${formatMoney(r.ingresos - cobrado)}` : 'Previsto'}
             />
             <MainKpi
               label="Gastos"
@@ -254,11 +259,17 @@ export default function Dashboard() {
               sub="Gastos + tarjetas + préstamos + servicios"
             />
             <MainKpi
-              label="Saldo"
+              label={esMesActual ? 'Saldo real (caja)' : 'Saldo previsto'}
               valor={formatMoney(saldo)}
               icon={Wallet}
               tono={saldo >= 0 ? 'brand' : 'rose'}
-              sub="Ingresos (con saldo anterior) − gastos"
+              sub={
+                arrastre !== 0
+                  ? `Saldo anterior ${formatMoney(arrastre)} ${esMesActual ? '+ cobrado − pagado' : '+ previsto'}`
+                  : esMesActual
+                    ? 'Cobrado − pagado del mes'
+                    : 'Previsto del mes'
+              }
             />
           </div>
 

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Plus, Pencil, Trash2, TrendingUp, Repeat, ArrowUpDown } from 'lucide-react'
+import { Plus, Pencil, Trash2, TrendingUp, Repeat, ArrowUpDown, CheckCircle2, Circle } from 'lucide-react'
 import PageShell from '@/components/PageShell'
 import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
@@ -16,7 +16,8 @@ import { useConfigStore } from '@/store/configStore'
 import { useDatosFinancieros } from '@/store/useDatosFinancieros'
 import { ingresoAplicaAMes, saldoArrastrado } from '@/lib/agregados'
 import { importeVigenteEnMes } from '@/lib/vigencia'
-import { hoyISO, fechaLegible, mesActual, etiquetaMes } from '@/lib/dates'
+import { estaPagado, togglePagoMes } from '@/lib/pagos'
+import { hoyISO, fechaLegible, mesActual, etiquetaMes, fechaConDia, diaDeFecha } from '@/lib/dates'
 import type { Ingreso } from '@/models'
 
 const CATEGORIAS_SUGERIDAS = [
@@ -103,6 +104,18 @@ export default function Ingresos() {
   const datosPie = arrastre > 0 ? [{ name: 'Saldo mes anterior', value: arrastre }, ...porCategoria] : porCategoria
   const hayFilas = ingresosDelMes.length > 0 || arrastre !== 0
 
+  // Cobrado (depositado) vs a cobrar (pendiente) del mes.
+  const depositadoMes = ingresosDelMes
+    .filter((i) => estaPagado(i.mesesCobrado, mes))
+    .reduce((a, i) => a + importeMes(i), 0)
+  const cobrado = arrastre + depositadoMes // plata ya disponible (arrastre + lo depositado)
+  const aCobrar = totalBase - depositadoMes // ingresos del mes que faltan depositarse
+  const toggleCobrado = (i: Ingreso) =>
+    ingresosRepo.actualizar(i.id!, { mesesCobrado: togglePagoMes(i.mesesCobrado, mes) })
+  // Fecha estimada de un ingreso en el mes navegado (recurrente = el día, en este mes).
+  const fechaEstimada = (i: Ingreso) =>
+    i.repeticionMensual ? fechaConDia(mes, diaDeFecha(i.fecha)) : i.fecha
+
   return (
     <PageShell
       titulo="Ingresos"
@@ -117,6 +130,21 @@ export default function Ingresos() {
       }
     >
       <ResumenCategorias etiquetaTotal={`Total ingresos · ${etiquetaMes(mes)}`} total={total} data={datosPie} />
+
+      {hayFilas && (
+        <div className="mb-5 grid grid-cols-2 gap-4 sm:max-w-md">
+          <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <div className="text-xs text-slate-500">Cobrado (disponible)</div>
+            <div className="mt-1 text-xl font-bold text-emerald-600 tabular">{money(cobrado)}</div>
+          </div>
+          <div className={`rounded-xl border p-4 ${aCobrar > 0 ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-white'}`}>
+            <div className="text-xs text-slate-500">A cobrar</div>
+            <div className={`mt-1 text-xl font-bold tabular ${aCobrar > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+              {money(aCobrar)}
+            </div>
+          </div>
+        </div>
+      )}
 
       {!hayFilas ? (
         <EmptyState
@@ -134,9 +162,10 @@ export default function Ingresos() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                <th className="px-4 py-3 font-medium">Cobro</th>
                 <th className="px-4 py-3 font-medium">Descripción</th>
                 <th className="px-4 py-3 font-medium">Categoría</th>
-                <th className="px-4 py-3 font-medium">Fecha</th>
+                <th className="px-4 py-3 font-medium">Estimado</th>
                 <th className="px-4 py-3 text-right font-medium">Importe</th>
                 <th className="px-4 py-3 font-medium">Mensual</th>
                 <th className="px-4 py-3"></th>
@@ -145,6 +174,9 @@ export default function Ingresos() {
             <tbody>
               {arrastre !== 0 && (
                 <tr className="border-b border-slate-100 bg-emerald-50/40">
+                  <td className="px-4 py-3 text-emerald-600" title="Ya disponible">
+                    <CheckCircle2 size={18} />
+                  </td>
                   <td className="px-4 py-3">
                     <div className="font-medium text-slate-800">Saldo del mes anterior</div>
                     <div className="text-xs text-slate-400">Lo que quedó libre y se arrastra</div>
@@ -162,8 +194,20 @@ export default function Ingresos() {
                   <td className="px-4 py-3"></td>
                 </tr>
               )}
-              {ingresosDelMes.map((i) => (
-                <tr key={i.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+              {ingresosDelMes.map((i) => {
+                const cobradoI = estaPagado(i.mesesCobrado, mes)
+                return (
+                <tr key={i.id} className={`border-b border-slate-100 last:border-0 hover:bg-slate-50 ${cobradoI ? 'bg-emerald-50/30' : ''}`}>
+                  <td className="px-4 py-3">
+                    <button
+                      onClick={() => toggleCobrado(i)}
+                      className={`rounded-lg p-1 hover:bg-emerald-50 hover:text-emerald-600 ${cobradoI ? 'text-emerald-600' : 'text-slate-300'}`}
+                      aria-label={cobradoI ? 'Marcar como no cobrado' : 'Marcar como cobrado/depositado'}
+                      title={cobradoI ? `Depositado en ${etiquetaMes(mes)} (tocá para desmarcar)` : `Marcar depositado en ${etiquetaMes(mes)}`}
+                    >
+                      {cobradoI ? <CheckCircle2 size={18} /> : <Circle size={18} />}
+                    </button>
+                  </td>
                   <td className="px-4 py-3">
                     <div className="font-medium text-slate-800">{i.descripcion}</div>
                     {i.observaciones && (
@@ -171,7 +215,7 @@ export default function Ingresos() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-slate-600">{i.categoria}</td>
-                  <td className="px-4 py-3 text-slate-600">{fechaLegible(i.fecha)}</td>
+                  <td className="px-4 py-3 text-slate-600">{fechaLegible(fechaEstimada(i))}</td>
                   <td className="px-4 py-3 text-right font-medium text-emerald-600 tabular">
                     {money(importeMes(i))}
                     {(i.importes?.length ?? 0) > 0 && (
@@ -219,7 +263,8 @@ export default function Ingresos() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table>
         </div>

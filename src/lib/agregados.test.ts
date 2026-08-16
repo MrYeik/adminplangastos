@@ -8,6 +8,8 @@ import {
   deudaPendiente,
   proximosVencimientos,
   saldoArrastrado,
+  disponibleEfectivoDelMes,
+  ingresosCobradosDelMes,
   type DatosFinancieros,
 } from './agregados'
 import type { Ingreso, Gasto, CompraTarjeta, Prestamo } from '@/models'
@@ -96,6 +98,22 @@ describe('agregación mensual', () => {
     expect(saldoArrastrado(datos, '2026-07', '2026-07')).toBe(0) // mes de inicio
     expect(saldoArrastrado(datos, '2026-08', '2026-07')).toBe(75_000_00) // arrastra julio
     expect(saldoArrastrado(datos, '2026-09', '2026-07')).toBe(120_000_00) // julio + agosto
+  })
+
+  it('disponible efectivo: solo suma ingresos depositados y resta gastos pagados + débitos', () => {
+    const ing: Ingreso[] = [
+      { id: 1, descripcion: 'Sueldo', categoria: 'Sueldo', fecha: '2026-07-01', importe: 100_000_00, repeticionMensual: true, mesesCobrado: ['2026-07'] },
+    ]
+    const gas: Gasto[] = [
+      { id: 1, descripcion: 'Alquiler', categoria: 'Vivienda', fecha: '2026-07-01', importe: 40_000_00, repetitivoMensual: true, tipo: 'fijo', mesesPagados: ['2026-07'] },
+    ]
+    const d: DatosFinancieros = { ingresos: ing, gastos: gas, compras: [], prestamos: [] }
+    expect(ingresosCobradosDelMes(ing, '2026-07')).toBe(100_000_00)
+    // cobrado 100k − pagado 40k − autos 0 = 60k
+    expect(disponibleEfectivoDelMes(d, '2026-07')).toBe(60_000_00)
+    // sin marca de cobrado, el ingreso no cuenta (queda solo el gasto pagado)
+    const sinCobro: DatosFinancieros = { ...d, ingresos: [{ ...ing[0], mesesCobrado: [] }] }
+    expect(disponibleEfectivoDelMes(sinCobro, '2026-07')).toBe(-40_000_00)
   })
 
   it('gastos con cambio de importe: rige a futuro sin tocar el pasado', () => {

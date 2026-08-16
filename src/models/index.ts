@@ -25,6 +25,7 @@ export interface Ingreso {
   importe: number // centavos (importe original, rige desde el alta)
   repeticionMensual: boolean
   importes?: ImporteVigente[] // cambios de importe {desde, importe} que rigen a futuro sin tocar el pasado
+  mesesCobrado?: string[] // meses 'YYYY-MM' en que el ingreso se depositó/cobró (recién ahí suma al saldo real)
   observaciones?: string
 }
 

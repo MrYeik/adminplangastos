@@ -16,7 +16,7 @@ import { useConfigStore } from '@/store/configStore'
 import { gastoAplicaAMes } from '@/lib/agregados'
 import { importeVigenteEnMes } from '@/lib/vigencia'
 import { estaPagado, togglePagoMes } from '@/lib/pagos'
-import { hoyISO, fechaLegible, mesActual, etiquetaMes } from '@/lib/dates'
+import { hoyISO, fechaLegible, mesActual, etiquetaMes, fechaConDia, diaDeFecha } from '@/lib/dates'
 import type { Gasto, TipoGasto } from '@/models'
 
 const VACIO: Omit<Gasto, 'id'> = {
@@ -98,6 +98,9 @@ export default function Gastos() {
   const gastosDelMes = gastos.filter((g) => gastoAplicaAMes(g, mes))
   const visibles = gastosDelMes.filter((g) => filtroTipo === 'todos' || g.tipo === filtroTipo)
   const importeMes = (g: Gasto) => importeVigenteEnMes(g.importe, g.importes, mes)
+  // Fecha estimada en el mes navegado (recurrente = su día, en este mes).
+  const fechaEstimada = (g: Gasto) =>
+    g.repetitivoMensual ? fechaConDia(mes, diaDeFecha(g.fecha)) : g.fecha
   const total = gastosDelMes.reduce((a, g) => a + importeMes(g), 0)
   const pagado = gastosDelMes
     .filter((g) => estaPagado(g.mesesPagados, mes))
@@ -171,7 +174,7 @@ export default function Gastos() {
                 <th className="px-4 py-3 font-medium">Descripción</th>
                 <th className="px-4 py-3 font-medium">Categoría</th>
                 <th className="px-4 py-3 font-medium">Tipo</th>
-                <th className="px-4 py-3 font-medium">Fecha</th>
+                <th className="px-4 py-3 font-medium">Estimado</th>
                 <th className="px-4 py-3 text-right font-medium">Importe</th>
                 <th className="px-4 py-3"></th>
               </tr>
@@ -213,7 +216,7 @@ export default function Gastos() {
                       {g.tipo}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">{fechaLegible(g.fecha)}</td>
+                  <td className="px-4 py-3 text-slate-600">{fechaLegible(fechaEstimada(g))}</td>
                   <td className="px-4 py-3 text-right font-medium text-rose-600 tabular">
                     {money(importeMes(g))}
                     {(g.importes?.length ?? 0) > 0 && (
