@@ -22,8 +22,9 @@ export interface Ingreso {
   descripcion: string
   categoria: string
   fecha: string
-  importe: number // centavos
+  importe: number // centavos (importe original, rige desde el alta)
   repeticionMensual: boolean
+  importes?: ImporteVigente[] // cambios de importe {desde, importe} que rigen a futuro sin tocar el pasado
   observaciones?: string
 }
 
@@ -32,11 +33,12 @@ export interface Gasto {
   descripcion: string
   categoria: CategoriaGasto | string
   fecha: string
-  importe: number // centavos
+  importe: number // centavos (importe original, rige desde el alta)
   medioPago?: string
   responsable?: string
   observaciones?: string
   repetitivoMensual: boolean
+  importes?: ImporteVigente[] // cambios de importe {desde, importe} que rigen a futuro sin tocar el pasado
   tipo: TipoGasto
   esServicio?: boolean // se refleja en la pestaña Servicios (sin duplicar valor)
   mesesPagados?: string[] // meses 'YYYY-MM' marcados como pagados

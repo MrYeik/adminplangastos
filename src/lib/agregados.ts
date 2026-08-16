@@ -10,6 +10,7 @@ import {
   resumenPrestamo,
 } from './cuotas'
 import { estaPagado } from './pagos'
+import { importeVigenteEnMes } from './vigencia'
 import { importeServicioEnMes, serviciosDelMes } from './servicios'
 
 export interface DatosFinancieros {
@@ -33,13 +34,15 @@ export function gastoAplicaAMes(g: Gasto, mes: string): boolean {
 }
 
 export function ingresosDelMes(ingresos: Ingreso[], mes: string): number {
-  return ingresos.filter((i) => ingresoAplicaAMes(i, mes)).reduce((a, i) => a + i.importe, 0)
+  return ingresos
+    .filter((i) => ingresoAplicaAMes(i, mes))
+    .reduce((a, i) => a + importeVigenteEnMes(i.importe, i.importes, mes), 0)
 }
 
 export function gastosDelMes(gastos: Gasto[], mes: string, tipo?: TipoGasto): number {
   return gastos
     .filter((g) => gastoAplicaAMes(g, mes) && (tipo == null || g.tipo === tipo))
-    .reduce((a, g) => a + g.importe, 0)
+    .reduce((a, g) => a + importeVigenteEnMes(g.importe, g.importes, mes), 0)
 }
 
 export function cuotasTarjetaDelMes(compras: CompraTarjeta[], mes: string): number {
@@ -50,7 +53,7 @@ export function cuotasTarjetaDelMes(compras: CompraTarjeta[], mes: string): numb
 export function gastosPagadosDelMes(gastos: Gasto[], mes: string): number {
   return gastos
     .filter((g) => gastoAplicaAMes(g, mes) && estaPagado(g.mesesPagados, mes))
-    .reduce((a, g) => a + g.importe, 0)
+    .reduce((a, g) => a + importeVigenteEnMes(g.importe, g.importes, mes), 0)
 }
 
 export function cuotasPrestamoDelMes(prestamos: Prestamo[], mes: string): number {
@@ -143,11 +146,11 @@ export function desgloseProyeccion(
   const conValor = (vals: number[]) => vals.some((v) => v !== 0)
 
   for (const i of d.ingresos) {
-    const vals = meses.map((m) => (ingresoAplicaAMes(i, m) ? i.importe : 0))
+    const vals = meses.map((m) => (ingresoAplicaAMes(i, m) ? importeVigenteEnMes(i.importe, i.importes, m) : 0))
     if (conValor(vals)) desg.ingresos.push(fila(i.descripcion, vals))
   }
   for (const g of d.gastos) {
-    const vals = meses.map((m) => (gastoAplicaAMes(g, m) ? g.importe : 0))
+    const vals = meses.map((m) => (gastoAplicaAMes(g, m) ? importeVigenteEnMes(g.importe, g.importes, m) : 0))
     if (conValor(vals)) (g.tipo === 'fijo' ? desg.gastosFijos : desg.gastosVariables).push(fila(g.descripcion, vals))
   }
   for (const t of tarjetas) {
@@ -179,7 +182,7 @@ export function egresosPorCategoria(d: DatosFinancieros, mes: string): GastoCate
   const mapa = new Map<string, number>()
   for (const g of d.gastos) {
     if (gastoAplicaAMes(g, mes)) {
-      mapa.set(g.categoria, (mapa.get(g.categoria) ?? 0) + g.importe)
+      mapa.set(g.categoria, (mapa.get(g.categoria) ?? 0) + importeVigenteEnMes(g.importe, g.importes, mes))
     }
   }
   for (const s of d.servicios ?? []) {

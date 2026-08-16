@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Plus, Pencil, Trash2, TrendingUp, Repeat } from 'lucide-react'
+import { Plus, Pencil, Trash2, TrendingUp, Repeat, ArrowUpDown } from 'lucide-react'
 import PageShell from '@/components/PageShell'
 import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
@@ -15,6 +15,7 @@ import { ingresosRepo } from '@/db/repos/ingresos'
 import { useConfigStore } from '@/store/configStore'
 import { useDatosFinancieros } from '@/store/useDatosFinancieros'
 import { ingresoAplicaAMes, saldoArrastrado } from '@/lib/agregados'
+import { importeVigenteEnMes } from '@/lib/vigencia'
 import { hoyISO, fechaLegible, mesActual, etiquetaMes } from '@/lib/dates'
 import type { Ingreso } from '@/models'
 
@@ -45,6 +46,10 @@ export default function Ingresos() {
   const [editId, setEditId] = useState<number | null>(null)
   const [aBorrar, setABorrar] = useState<Ingreso | null>(null)
   const [mes, setMes] = useState(mesActual())
+  // Cambio de importe a futuro (sin tocar meses pasados)
+  const [cambiarDe, setCambiarDe] = useState<Ingreso | null>(null)
+  const [nuevoImporte, setNuevoImporte] = useState(0)
+  const [mesCambio, setMesCambio] = useState(mes)
 
   const abrirNuevo = () => {
     setEditId(null)
@@ -63,16 +68,38 @@ export default function Ingresos() {
     cerrar()
   }
 
+  const abrirCambio = (i: Ingreso) => {
+    setCambiarDe(i)
+    setNuevoImporte(importeVigenteEnMes(i.importe, i.importes, mes))
+    setMesCambio(mes)
+  }
+  const guardarCambio = async () => {
+    if (!cambiarDe || nuevoImporte <= 0) return
+    // Un cambio con 'desde' = mes del alta pisa el importe base; si no, se suma al historial.
+    const desdeAlta = mesCambio <= cambiarDe.fecha.slice(0, 7)
+    if (desdeAlta) {
+      await ingresosRepo.actualizar(cambiarDe.id!, { importe: nuevoImporte })
+    } else {
+      const importes = [
+        ...(cambiarDe.importes ?? []).filter((x) => x.desde !== mesCambio),
+        { desde: mesCambio, importe: nuevoImporte },
+      ]
+      await ingresosRepo.actualizar(cambiarDe.id!, { importes })
+    }
+    setCambiarDe(null)
+  }
+
   // Ingresos que aplican al mes elegido (recurrentes + los del mes).
   const ingresosDelMes = ingresos.filter((i) => ingresoAplicaAMes(i, mes))
-  const totalBase = ingresosDelMes.reduce((acc, i) => acc + i.importe, 0)
+  const importeMes = (i: Ingreso) => importeVigenteEnMes(i.importe, i.importes, mes)
+  const totalBase = ingresosDelMes.reduce((acc, i) => acc + importeMes(i), 0)
 
   // Saldo libre arrastrado del mes anterior (cuenta corriente), como ingreso.
   const mesInicio = config?.mesInicioProyeccion ?? mes
   const arrastre = saldoArrastrado(datos, mes, mesInicio)
   const total = totalBase + arrastre
 
-  const porCategoria = agruparPorCategoria(ingresosDelMes, (i) => i.categoria, (i) => i.importe)
+  const porCategoria = agruparPorCategoria(ingresosDelMes, (i) => i.categoria, importeMes)
   const datosPie = arrastre > 0 ? [{ name: 'Saldo mes anterior', value: arrastre }, ...porCategoria] : porCategoria
   const hayFilas = ingresosDelMes.length > 0 || arrastre !== 0
 
@@ -146,7 +173,12 @@ export default function Ingresos() {
                   <td className="px-4 py-3 text-slate-600">{i.categoria}</td>
                   <td className="px-4 py-3 text-slate-600">{fechaLegible(i.fecha)}</td>
                   <td className="px-4 py-3 text-right font-medium text-emerald-600 tabular">
-                    {money(i.importe)}
+                    {money(importeMes(i))}
+                    {(i.importes?.length ?? 0) > 0 && (
+                      <span className="ml-1 inline-flex items-center text-emerald-500" title="Con cambios de importe">
+                        <ArrowUpDown size={12} />
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     {i.repeticionMensual ? (
@@ -160,6 +192,16 @@ export default function Ingresos() {
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-1">
                       <BotonAdjuntos entidadTipo="ingreso" entidadId={i.id!} titulo={`Comprobantes · ${i.descripcion}`} />
+                      {i.repeticionMensual && (
+                        <button
+                          onClick={() => abrirCambio(i)}
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
+                          aria-label="Cambiar importe desde un mes"
+                          title="Cambiar importe (desde un mes, sin tocar el pasado)"
+                        >
+                          <ArrowUpDown size={16} />
+                        </button>
+                      )}
                       <button
                         onClick={() => abrirEditar(i)}
                         className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
@@ -251,6 +293,41 @@ export default function Ingresos() {
                 disabled={!form.descripcion.trim() || form.importe <= 0}
               >
                 {editId != null ? 'Guardar cambios' : 'Agregar'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Modal: cambiar importe desde un mes (sin afectar el pasado) */}
+      <Modal
+        abierto={cambiarDe != null}
+        titulo={`Cambiar importe · ${cambiarDe?.descripcion ?? ''}`}
+        onCerrar={() => setCambiarDe(null)}
+        ancho="max-w-sm"
+      >
+        {cambiarDe && (
+          <div className="space-y-4">
+            <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">
+              El nuevo importe rige <strong>desde el mes elegido en adelante</strong>. Los meses
+              anteriores mantienen el valor que tenían.
+            </p>
+            <Campo label="Nuevo importe" requerido>
+              <MoneyInput value={nuevoImporte} onChange={setNuevoImporte} />
+            </Campo>
+            <Campo label="Rige desde el mes">
+              <TextInput
+                type="month"
+                value={mesCambio}
+                onChange={(e) => setMesCambio(e.target.value)}
+              />
+            </Campo>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variante="secondary" onClick={() => setCambiarDe(null)}>
+                Cancelar
+              </Button>
+              <Button onClick={guardarCambio} disabled={nuevoImporte <= 0}>
+                Guardar
               </Button>
             </div>
           </div>

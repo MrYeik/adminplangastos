@@ -5,6 +5,7 @@ import type { DatosFinancieros } from './agregados'
 import { ingresoAplicaAMes, gastoAplicaAMes } from './agregados'
 import { importeCompraEnMes, importeCuotaPrestamoEnMes } from './cuotas'
 import { importeServicioEnMes } from './servicios'
+import { importeVigenteEnMes } from './vigencia'
 import { diaDeFecha, fechaConDia, sumarMeses, diasEntreISO } from './dates'
 
 export type TipoEvento = 'ingreso' | 'tarjeta' | 'prestamo' | 'servicio' | 'impuesto' | 'gasto'
@@ -51,7 +52,7 @@ export function eventosDelMes(d: DatosFinancieros, mes: string): EventoFinancier
         tipo: 'ingreso',
         titulo: i.descripcion,
         detalle: i.categoria,
-        importe: i.importe,
+        importe: importeVigenteEnMes(i.importe, i.importes, mes),
       })
     }
   }
@@ -63,7 +64,7 @@ export function eventosDelMes(d: DatosFinancieros, mes: string): EventoFinancier
         tipo: tipoDeGasto(g.categoria),
         titulo: g.descripcion,
         detalle: g.categoria,
-        importe: g.importe,
+        importe: importeVigenteEnMes(g.importe, g.importes, mes),
       })
     }
   }

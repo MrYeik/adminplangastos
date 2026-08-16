@@ -7,6 +7,7 @@ import {
   egresosPorCategoria,
   deudaPendiente,
   proximosVencimientos,
+  saldoArrastrado,
   type DatosFinancieros,
 } from './agregados'
 import type { Ingreso, Gasto, CompraTarjeta, Prestamo } from '@/models'
@@ -88,5 +89,29 @@ describe('agregación mensual', () => {
     const v = proximosVencimientos(compras, prestamos, '2026-07')
     expect(v).toHaveLength(2)
     expect(v.every((x) => x.mes === '2026-07')).toBe(true)
+  })
+
+  it('saldo arrastrado acumula el disponible de los meses previos', () => {
+    // disponible jul = 75.000 ; ago = 45.000
+    expect(saldoArrastrado(datos, '2026-07', '2026-07')).toBe(0) // mes de inicio
+    expect(saldoArrastrado(datos, '2026-08', '2026-07')).toBe(75_000_00) // arrastra julio
+    expect(saldoArrastrado(datos, '2026-09', '2026-07')).toBe(120_000_00) // julio + agosto
+  })
+
+  it('gastos con cambio de importe: rige a futuro sin tocar el pasado', () => {
+    const g: Gasto[] = [
+      {
+        id: 9,
+        descripcion: 'Luz',
+        categoria: 'Servicios',
+        fecha: '2026-07-01',
+        importe: 10_000_00,
+        repetitivoMensual: true,
+        tipo: 'fijo',
+        importes: [{ desde: '2026-09', importe: 13_000_00 }],
+      },
+    ]
+    expect(gastosDelMes(g, '2026-08')).toBe(10_000_00) // antes del cambio
+    expect(gastosDelMes(g, '2026-09')).toBe(13_000_00) // desde el cambio
   })
 })
