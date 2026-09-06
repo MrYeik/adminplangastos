@@ -24,6 +24,8 @@ const CATEGORIAS_SUGERIDAS = [
   'Sueldo',
   'Horas extras',
   'Aguinaldo',
+  'Uber',
+  'Emprendimiento',
   'Trabajo adicional',
   'Otros ingresos',
 ]
