@@ -16,6 +16,7 @@ import {
   ChevronDown,
   CheckCircle2,
   Circle,
+  RefreshCw,
 } from 'lucide-react'
 import PageShell from '@/components/PageShell'
 import Button from '@/components/ui/Button'
@@ -76,6 +77,8 @@ export default function Tarjetas() {
   const [mesDetalle, setMesDetalle] = useState(mesActual())
   // Editor de fechas (cierre/vencimiento) puntual del resumen navegado.
   const [ajusteFechas, setAjusteFechas] = useState<{ cierre: string; vencimiento: string } | null>(null)
+  // Confirmación del recálculo masivo de resúmenes (compras de 1 pago).
+  const [recalcAbierto, setRecalcAbierto] = useState(false)
 
   // Formularios de tarjeta
   const [formTarjeta, setFormTarjeta] = useState<Omit<Tarjeta, 'id'> | null>(null)
@@ -131,6 +134,19 @@ export default function Tarjetas() {
 
   const tarjetaSel = tarjetas.find((t) => t.id === seleccionada) ?? null
   const comprasSel = compras.filter((c) => c.tarjetaId === seleccionada)
+  // Compras de 1 pago (sin cuotas): se pueden reubicar sin riesgo de desalinear.
+  const comprasUnPago = comprasSel.filter((c) => (c.cantidadCuotas ?? 1) <= 1 && !c.servicioRecurrente)
+
+  // Reubica las compras de 1 pago según el día de cierre (fix masivo de datos viejos).
+  const recalcularCompras = async () => {
+    if (!tarjetaSel) return
+    for (const c of comprasUnPago) {
+      await comprasRepo.actualizar(c.id!, {
+        mesPrimerResumen: resumenDeFecha(c.fechaCompra, tarjetaSel.diaCierre, tarjetaSel.cierres),
+      })
+    }
+    setRecalcAbierto(false)
+  }
 
   // --- acciones tarjeta ---
   const nuevaTarjeta = () => {
@@ -644,6 +660,11 @@ export default function Tarjetas() {
               {selUnif.size >= 2 && (
                 <Button variante="secondary" onClick={() => setUnifOpen(true)}>
                   <Layers size={16} /> Unificar {selUnif.size} en un plan
+                </Button>
+              )}
+              {comprasUnPago.length > 0 && tarjetaSel.diaCierre != null && (
+                <Button variante="secondary" onClick={() => setRecalcAbierto(true)}>
+                  <RefreshCw size={16} /> Recalcular resúmenes
                 </Button>
               )}
               <Button onClick={nuevaCompra}>
@@ -1213,6 +1234,15 @@ export default function Tarjetas() {
           if (compraABorrar?.id != null) await comprasRepo.eliminar(compraABorrar.id)
           setCompraABorrar(null)
         }}
+      />
+
+      <ConfirmDialog
+        abierto={recalcAbierto}
+        titulo="Recalcular resúmenes"
+        textoConfirmar="Recalcular"
+        mensaje={`Se van a reubicar ${comprasUnPago.length} compra(s) de 1 pago en el resumen que corresponde según el día de cierre (${tarjetaSel?.diaCierre ?? '—'}). Las compras en cuotas no se tocan. ¿Continuar?`}
+        onCancelar={() => setRecalcAbierto(false)}
+        onConfirmar={recalcularCompras}
       />
     </PageShell>
   )
