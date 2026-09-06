@@ -6,3 +6,6 @@ dev-dist
 .vite
 .DS_Store
 *.log
+
+# Backups locales con datos personales (nunca commitear)
+gastos-backup-*.json
