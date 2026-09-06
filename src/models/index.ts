@@ -158,6 +158,7 @@ export interface Documento {
   id?: ID
   entidadTipo: string
   entidadId: ID
+  mes?: string // 'YYYY-MM' si el adjunto corresponde a un mes puntual (ej. recibo de sueldo)
   nombre: string
   mime: string
   blob: Blob

@@ -9,6 +9,7 @@ import type { Documento } from '@/models'
 interface Props {
   entidadTipo: string
   entidadId: number
+  mes?: string // si se pasa, los adjuntos son de ese mes (ej. recibo de sueldo)
   titulo?: string
 }
 
@@ -19,12 +20,12 @@ function tamano(bytes: number): string {
 }
 
 /** Botón con contador de adjuntos que abre un modal para gestionarlos. */
-export default function BotonAdjuntos({ entidadTipo, entidadId, titulo = 'Adjuntos' }: Props) {
+export default function BotonAdjuntos({ entidadTipo, entidadId, mes, titulo = 'Adjuntos' }: Props) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [abierto, setAbierto] = useState(false)
   const docs = useLiveQuery(
-    () => documentosRepo.deEntidad(entidadTipo, entidadId),
-    [entidadTipo, entidadId],
+    () => documentosRepo.deEntidad(entidadTipo, entidadId, mes),
+    [entidadTipo, entidadId, mes],
     [] as Documento[],
   )
 
@@ -35,6 +36,7 @@ export default function BotonAdjuntos({ entidadTipo, entidadId, titulo = 'Adjunt
       await documentosRepo.agregar({
         entidadTipo,
         entidadId,
+        ...(mes ? { mes } : {}),
         nombre: file.name,
         mime: file.type || 'application/octet-stream',
         blob: file,

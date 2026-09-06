@@ -235,13 +235,22 @@ export default function Ingresos() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-1">
-                      <BotonAdjuntos entidadTipo="ingreso" entidadId={i.id!} titulo={`Comprobantes · ${i.descripcion}`} />
+                      {i.repeticionMensual ? (
+                        <BotonAdjuntos
+                          entidadTipo="ingreso"
+                          entidadId={i.id!}
+                          mes={mes}
+                          titulo={`Recibo · ${i.descripcion} · ${etiquetaMes(mes, true)}`}
+                        />
+                      ) : (
+                        <BotonAdjuntos entidadTipo="ingreso" entidadId={i.id!} titulo={`Comprobantes · ${i.descripcion}`} />
+                      )}
                       {i.repeticionMensual && (
                         <button
                           onClick={() => abrirCambio(i)}
                           className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
-                          aria-label="Cambiar importe desde un mes"
-                          title="Cambiar importe (desde un mes, sin tocar el pasado)"
+                          aria-label="Cargar el importe de este mes"
+                          title={`Cargar el importe de ${etiquetaMes(mes, true)} (rige desde ese mes)`}
                         >
                           <ArrowUpDown size={16} />
                         </button>
