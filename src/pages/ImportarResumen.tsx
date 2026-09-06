@@ -18,7 +18,7 @@ import { db } from '@/db/db'
 import { comprasRepo } from '@/db/repos/tarjetas'
 import { extraerLineasPDF, PasswordRequeridaError } from '@/lib/pdfExtract'
 import { detectarResumen, type Consumo } from '@/lib/resumenes'
-import { fechaLegible } from '@/lib/dates'
+import { fechaLegible, mesActual, sumarMeses, etiquetaMes } from '@/lib/dates'
 import { formatMoney } from '@/lib/money'
 import { convertirUsdAArs } from '@/lib/cotizacion'
 import { useCotizacionStore } from '@/store/cotizacionStore'
@@ -41,6 +41,8 @@ export default function ImportarResumen() {
     c.moneda === 'USD' ? (cotizUsd ? convertirUsdAArs(c.importe, cotizUsd) : 0) : c.importe
 
   const [tarjetaId, setTarjetaId] = useState<number | ''>('')
+  // Resumen (mes en que se paga) al que corresponde el PDF importado.
+  const [mesResumen, setMesResumen] = useState(mesActual())
   const [archivo, setArchivo] = useState<File | null>(null)
   const [banco, setBanco] = useState('')
   const [consumos, setConsumos] = useState<Consumo[]>([])
@@ -137,13 +139,19 @@ export default function ImportarResumen() {
       // Todos los consumos son movimientos de la tarjeta: los de un pago se
       // cargan como compra de 1 cuota; los financiados, con sus cuotas.
       const cuotas = esCompraEnCuotas(c)
+      // El resumen elegido es el mes de la cuota ACTUAL; la 1ª cuota va hacia
+      // atrás según cuántas ya transcurrieron (para que en este resumen quede
+      // en el número de cuota correcto).
+      const cuotaAct = cuotas ? (c.cuotaActual ?? 1) : 1
+      const mesPrimerResumen = sumarMeses(mesResumen, -(cuotaAct - 1))
       await comprasRepo.agregar({
         tarjetaId: Number(tarjetaId),
         descripcion: c.detalle,
         comercio: c.detalle,
         fechaCompra: c.fecha,
+        mesPrimerResumen,
         cantidadCuotas: cuotas ? c.cuotaTotal! : 1,
-        cuotaActual: cuotas ? (c.cuotaActual ?? 1) : 1,
+        cuotaActual: cuotaAct,
         importePorCuota: aArs(c),
         ...(esUSD
           ? { moneda: 'USD' as const, importeOriginalUSD: c.importe, cotizacion: cotizUsd! }
@@ -209,6 +217,23 @@ export default function ImportarResumen() {
               </option>
             ))}
           </Select>
+        )}
+
+        {!sinTarjetas && (
+          <div className="mt-4">
+            <span className="mb-1 block text-sm font-medium text-slate-700">
+              ¿A qué resumen corresponde? <span className="font-normal text-slate-400">(mes en que se paga)</span>
+            </span>
+            <TextInput
+              type="month"
+              value={mesResumen}
+              onChange={(e) => setMesResumen(e.target.value || mesActual())}
+              className="sm:max-w-xs"
+            />
+            <p className="mt-1 text-xs text-slate-400">
+              Las compras se cargan en el resumen de <strong>{etiquetaMes(mesResumen, true)}</strong>, no en la fecha de cada compra.
+            </p>
+          </div>
         )}
       </div>
 

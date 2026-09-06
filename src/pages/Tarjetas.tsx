@@ -222,7 +222,12 @@ export default function Tarjetas() {
   // --- acciones compra ---
   const nuevaCompra = () => {
     setEditCompraId(null)
-    setFormCompra({ ...COMPRA_VACIA, fechaCompra: hoyISO() })
+    const fechaCompra = hoyISO()
+    setFormCompra({
+      ...COMPRA_VACIA,
+      fechaCompra,
+      mesPrimerResumen: resumenDeFecha(fechaCompra, tarjetaSel?.diaCierre, tarjetaSel?.cierres),
+    })
   }
   const editarCompra = (c: CompraTarjeta) => {
     setEditCompraId(c.id!)
@@ -241,12 +246,11 @@ export default function Tarjetas() {
     // En dólares necesitamos la cotización para convertir a pesos.
     const esUSD = formCompra.moneda === 'USD'
     if (esUSD && !promedioUsd) return
-    // Resumen donde cae la 1ª cuota, según el cierre de la tarjeta.
-    const mesPrimerResumen = resumenDeFecha(
-      formCompra.fechaCompra,
-      tarjetaSel?.diaCierre,
-      tarjetaSel?.cierres,
-    )
+    // Resumen donde cae la 1ª cuota: lo que eligió el usuario, o el sugerido
+    // por el día de cierre de la tarjeta.
+    const mesPrimerResumen =
+      formCompra.mesPrimerResumen ??
+      resumenDeFecha(formCompra.fechaCompra, tarjetaSel?.diaCierre, tarjetaSel?.cierres)
     // cuotaActual como snapshot informativo respecto del mes actual
     const cuotaActual = nroCuotaEnMes(mesPrimerResumen, formCompra.cantidadCuotas, mesRef)
     // Si es USD, el importe cargado es en dólares: se guarda el original y el
@@ -890,10 +894,31 @@ export default function Tarjetas() {
                 <TextInput
                   type="date"
                   value={formCompra.fechaCompra}
-                  onChange={(e) => setFormCompra({ ...formCompra, fechaCompra: e.target.value })}
+                  onChange={(e) =>
+                    setFormCompra({
+                      ...formCompra,
+                      fechaCompra: e.target.value,
+                      // Sugerir el resumen según el cierre al cambiar la fecha.
+                      mesPrimerResumen: e.target.value
+                        ? resumenDeFecha(e.target.value, tarjetaSel?.diaCierre, tarjetaSel?.cierres)
+                        : formCompra.mesPrimerResumen,
+                    })
+                  }
                 />
               </Campo>
             </div>
+            <Campo
+              label="Se paga en el resumen de"
+              hint="El mes en que se paga esta compra (la 1ª cuota si es en cuotas)."
+            >
+              <TextInput
+                type="month"
+                value={formCompra.mesPrimerResumen ?? ''}
+                onChange={(e) =>
+                  setFormCompra({ ...formCompra, mesPrimerResumen: e.target.value || undefined })
+                }
+              />
+            </Campo>
             <Campo label="Moneda">
               <div className="flex gap-2">
                 {(['ARS', 'USD'] as const).map((m) => (
