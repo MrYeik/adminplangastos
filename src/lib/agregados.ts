@@ -74,6 +74,24 @@ export function ingresosCobradosDelMes(ingresos: Ingreso[], mes: string): number
  * restan los pagados; los débitos automáticos (servicios, tarjeta, préstamos)
  * restan siempre. Sirve para el saldo del mes en curso.
  */
+/**
+ * Suma de los egresos del mes que TODAVÍA no se marcaron como pagados:
+ * gastos, servicios y cuotas de tarjeta sin su tilde de pago. (Los préstamos
+ * no tienen marca de pago, así que no entran.)
+ */
+export function pendientePagoDelMes(d: DatosFinancieros, mes: string): number {
+  const gastos = d.gastos
+    .filter((g) => gastoAplicaAMes(g, mes) && !estaPagado(g.mesesPagados, mes))
+    .reduce((a, g) => a + importeVigenteEnMes(g.importe, g.importes, mes), 0)
+  const servicios = (d.servicios ?? [])
+    .filter((s) => importeServicioEnMes(s, mes) > 0 && !estaPagado(s.mesesPagados, mes))
+    .reduce((a, s) => a + importeServicioEnMes(s, mes), 0)
+  const tarjeta = d.compras
+    .filter((c) => importeCompraEnMes(c, mes) > 0 && !estaPagado(c.mesesPagados, mes))
+    .reduce((a, c) => a + importeCompraEnMes(c, mes), 0)
+  return gastos + servicios + tarjeta
+}
+
 export function disponibleEfectivoDelMes(d: DatosFinancieros, mes: string): number {
   const cobrado = ingresosCobradosDelMes(d.ingresos, mes)
   const gastosPag = gastosPagadosDelMes(d.gastos, mes)

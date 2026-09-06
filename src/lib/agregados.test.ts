@@ -10,6 +10,7 @@ import {
   saldoArrastrado,
   disponibleEfectivoDelMes,
   ingresosCobradosDelMes,
+  pendientePagoDelMes,
   type DatosFinancieros,
 } from './agregados'
 import type { Ingreso, Gasto, CompraTarjeta, Prestamo } from '@/models'
@@ -114,6 +115,17 @@ describe('agregación mensual', () => {
     // sin marca de cobrado, el ingreso no cuenta (queda solo el gasto pagado)
     const sinCobro: DatosFinancieros = { ...d, ingresos: [{ ...ing[0], mesesCobrado: [] }] }
     expect(disponibleEfectivoDelMes(sinCobro, '2026-07')).toBe(-40_000_00)
+  })
+
+  it('pendiente = egresos del mes sin marcar pagados (préstamos no cuentan)', () => {
+    // Jul: Alquiler 40k + Súper 20k (gastos) + cuota TV 5k, ninguno pagado
+    expect(pendientePagoDelMes(datos, '2026-07')).toBe(65_000_00)
+    // Marcando el alquiler como pagado, baja 40k
+    const conPago: DatosFinancieros = {
+      ...datos,
+      gastos: datos.gastos.map((g) => (g.descripcion === 'Alquiler' ? { ...g, mesesPagados: ['2026-07'] } : g)),
+    }
+    expect(pendientePagoDelMes(conPago, '2026-07')).toBe(25_000_00)
   })
 
   it('gastos con cambio de importe: rige a futuro sin tocar el pasado', () => {

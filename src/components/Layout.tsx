@@ -21,11 +21,11 @@ import {
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/ingresos', label: 'Ingresos', icon: TrendingUp },
-  { to: '/gastos', label: 'Gastos', icon: Receipt },
+  { to: '/gastos', label: 'Gastos varios', icon: Receipt },
   { to: '/tarjetas', label: 'Tarjetas', icon: CreditCard },
+  { to: '/servicios', label: 'Servicios', icon: Repeat },
   { to: '/prestamos', label: 'Préstamos', icon: Landmark },
   { to: '/prestado', label: 'Prestado', icon: HandCoins },
-  { to: '/servicios', label: 'Servicios', icon: Repeat },
   { to: '/calendario', label: 'Calendario', icon: CalendarDays },
   { to: '/presupuesto', label: 'Presupuesto', icon: Wallet },
   { to: '/proyeccion', label: 'Proyección', icon: BarChart3 },

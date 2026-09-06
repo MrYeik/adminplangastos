@@ -35,10 +35,9 @@ import {
   resumenMes,
   serieMensual,
   egresosPorCategoria,
-  deudaPendiente,
-  saldoArrastrado,
   ingresosCobradosDelMes,
   disponibleEfectivoDelMes,
+  pendientePagoDelMes,
 } from '@/lib/agregados'
 import { mesActual, ventanaMeses, etiquetaMes, fechaLegible, sumarMeses } from '@/lib/dates'
 import { formatMoney, formatMoneyCompact } from '@/lib/money'
@@ -179,18 +178,14 @@ export default function Dashboard() {
   const [mes, setMes] = useState(mesActual())
 
   const r = resumenMes(datos, mes)
-  const deuda = deudaPendiente(datos.compras, datos.prestamos, mes)
-
-  // Saldo que viene arrastrado de meses anteriores (cuenta corriente).
-  const mesInicio = config?.mesInicioProyeccion ?? mes
-  const arrastre = saldoArrastrado(datos, mes, mesInicio)
   const esMesActual = mes === mesActual()
   const cobrado = ingresosCobradosDelMes(datos.ingresos, mes)
-  // El mes en curso usa la caja real (cobrado − pagado); los demás, lo previsto.
-  const disponibleReal = esMesActual ? disponibleEfectivoDelMes(datos, mes) : r.disponible
-  const saldo = arrastre + disponibleReal
-  const baseAhorro = r.ingresos + arrastre
-  const tasaAhorro = baseAhorro > 0 ? Math.round((saldo / baseAhorro) * 100) : 0
+  // Saldo del mes (solo del mes, sin arrastre): caja real en el mes en curso
+  // (cobrado − pagado), previsto (ingresos − egresos) en los demás meses.
+  const saldo = esMesActual ? disponibleEfectivoDelMes(datos, mes) : r.disponible
+  // Pendiente = suma de ítems del mes sin marcar como pagados.
+  const pendiente = pendientePagoDelMes(datos, mes)
+  const tasaAhorro = r.ingresos > 0 ? Math.round((saldo / r.ingresos) * 100) : 0
 
   // Previsión del mes siguiente (importes ya comprometidos + recurrentes).
   const mesSiguiente = sumarMeses(mes, 1)
@@ -245,31 +240,25 @@ export default function Dashboard() {
           {/* 3 valores principales */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <MainKpi
-              label="Ingresos"
+              label="Ingreso del mes"
               valor={formatMoney(r.ingresos)}
               icon={TrendingUp}
               tono="emerald"
               sub={esMesActual ? `Cobrado ${formatMoney(cobrado)} · a cobrar ${formatMoney(r.ingresos - cobrado)}` : 'Previsto'}
             />
             <MainKpi
-              label="Gastos"
+              label="Gasto del mes"
               valor={formatMoney(r.egresos)}
               icon={Receipt}
               tono="rose"
               sub="Gastos + tarjetas + préstamos + servicios"
             />
             <MainKpi
-              label={esMesActual ? 'Saldo real (caja)' : 'Saldo previsto'}
+              label="Saldo del mes"
               valor={formatMoney(saldo)}
               icon={Wallet}
               tono={saldo >= 0 ? 'brand' : 'rose'}
-              sub={
-                arrastre !== 0
-                  ? `Saldo anterior ${formatMoney(arrastre)} ${esMesActual ? '+ cobrado − pagado' : '+ previsto'}`
-                  : esMesActual
-                    ? 'Cobrado − pagado del mes'
-                    : 'Previsto del mes'
-              }
+              sub={esMesActual ? 'Cobrado − pagado del mes' : 'Previsto del mes'}
             />
           </div>
 
@@ -288,8 +277,8 @@ export default function Dashboard() {
 
           {/* Indicadores secundarios */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <KpiMini label="Comprometido en cuotas" valor={formatMoney(r.cuotasTarjeta)} sub="Cuotas de tarjeta del mes" />
-            <KpiMini label="Deuda pendiente" valor={formatMoney(deuda)} sub="Total a pagar (tarjetas + préstamos)" />
+            <KpiMini label="Total Tarjetas" valor={formatMoney(r.cuotasTarjeta)} sub="Resumen de tarjetas del mes" />
+            <KpiMini label="Pendiente" valor={formatMoney(pendiente)} sub="Ítems del mes sin marcar pagados" />
             <KpiMini label="Capacidad de ahorro" valor={`${tasaAhorro}%`} sub={`${formatMoney(saldo)} de saldo`} />
           </div>
 

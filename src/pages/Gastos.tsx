@@ -110,7 +110,7 @@ export default function Gastos() {
 
   return (
     <PageShell
-      titulo="Gastos"
+      titulo="Gastos varios"
       descripcion="Lo gastado, pagado y lo que falta pagar, mes a mes"
       acciones={
         <div className="flex flex-wrap items-center gap-2">
