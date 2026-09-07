@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import Dashboard from '@/pages/Dashboard'
+import Guia from '@/pages/Guia'
 import Ingresos from '@/pages/Ingresos'
 import Gastos from '@/pages/Gastos'
 import Tarjetas from '@/pages/Tarjetas'
@@ -37,6 +38,7 @@ const router = createBrowserRouter([
     element: <Layout />,
     children: [
       { index: true, element: <Dashboard /> },
+      { path: 'guia', element: <Guia /> },
       { path: 'ingresos', element: <Ingresos /> },
       { path: 'gastos', element: <Gastos /> },
       { path: 'tarjetas', element: <Tarjetas /> },

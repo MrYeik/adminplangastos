@@ -16,10 +16,12 @@ import {
   Search,
   Bell,
   Settings,
+  BookOpen,
 } from 'lucide-react'
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
+  { to: '/guia', label: 'Guía de uso', icon: BookOpen },
   { to: '/ingresos', label: 'Ingresos', icon: TrendingUp },
   { to: '/gastos', label: 'Gastos varios', icon: Receipt },
   { to: '/tarjetas', label: 'Tarjetas', icon: CreditCard },
