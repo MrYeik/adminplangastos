@@ -64,7 +64,7 @@ export default function Layout() {
           menuAbierto ? 'left-0' : '-left-60'
         }`}
       >
-        <div className="flex items-center justify-between border-b border-slate-800 px-5 py-5">
+        <div className="flex items-center justify-between border-b border-slate-800 px-5 pb-5 pt-[max(1.25rem,env(safe-area-inset-top))]">
           <div>
             <div className="text-xl font-bold tracking-tight text-white">
               Aura<span className="text-brand-400">+</span>
@@ -116,7 +116,7 @@ export default function Layout() {
       {/* Columna de contenido */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Barra superior solo en móvil */}
-        <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 md:hidden">
+        <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-slate-200 bg-white px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] md:hidden">
           <button
             type="button"
             onClick={() => setMenuAbierto(true)}
@@ -140,7 +140,7 @@ export default function Layout() {
           )}
         </header>
 
-        <main className="flex-1 overflow-x-auto">
+        <main className="flex-1 overflow-x-auto pb-[env(safe-area-inset-bottom)]">
           <Outlet />
         </main>
       </div>

@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import PageShell from '@/components/PageShell'
+import InstalarApp from '@/components/InstalarApp'
 
 interface Paso {
   icon: LucideIcon
@@ -148,6 +149,9 @@ const PASOS: Paso[] = [
 export default function Guia() {
   return (
     <PageShell titulo="Guía de uso" descripcion="Cómo cargar todo, paso a paso">
+      {/* Instalar en el teléfono (se auto-oculta si ya está instalada) */}
+      <InstalarApp />
+
       {/* Concepto clave */}
       <div className="mb-6 flex items-start gap-3 rounded-xl border border-brand-200 bg-brand-50 p-5">
         <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-100 text-brand-600">
