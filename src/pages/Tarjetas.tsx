@@ -79,6 +79,8 @@ export default function Tarjetas() {
   const [ajusteFechas, setAjusteFechas] = useState<{ cierre: string; vencimiento: string } | null>(null)
   // Confirmación del recálculo masivo de resúmenes (compras de 1 pago).
   const [recalcAbierto, setRecalcAbierto] = useState(false)
+  // Mes de compras finalizadas cuyo detalle se ve en un pop-up.
+  const [verFinMes, setVerFinMes] = useState<string | null>(null)
 
   // Formularios de tarjeta
   const [formTarjeta, setFormTarjeta] = useState<Omit<Tarjeta, 'id'> | null>(null)
@@ -370,6 +372,16 @@ export default function Tarjetas() {
 
   const activas = comprasSel.filter((c) => c.servicioRecurrente || resumenCompra(c, mesRef).pendiente)
   const finalizadas = comprasSel.filter((c) => !c.servicioRecurrente && !resumenCompra(c, mesRef).pendiente)
+  // Finalizadas agrupadas por el mes en que terminaron (más reciente primero).
+  const finalizadasPorMes = (() => {
+    const map = new Map<string, CompraTarjeta[]>()
+    for (const c of finalizadas) {
+      const m = resumenCompra(c, mesRef).mesFin ?? mesInicioCompra(c)
+      if (!map.has(m)) map.set(m, [])
+      map.get(m)!.push(c)
+    }
+    return [...map.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1))
+  })()
 
   const periodoDetalle = tarjetaSel ? periodoResumen(mesDetalle, tarjetaSel.diaCierre, tarjetaSel.cierres) : null
   const vencDetalle = tarjetaSel
@@ -786,7 +798,31 @@ export default function Tarjetas() {
           ) : (
             <>
               {activas.length > 0 && tablaCompras(activas, 'Activas', true)}
-              {finalizadas.length > 0 && tablaCompras(finalizadas, 'Finalizadas', false)}
+              {finalizadas.length > 0 && (
+                <div className="mt-6">
+                  <h3 className="mb-2 text-sm font-semibold text-slate-500">
+                    Finalizadas ({finalizadas.length}) · por mes
+                  </h3>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                    {finalizadasPorMes.map(([m, cs]) => {
+                      const total = cs.reduce((a, c) => a + c.importePorCuota * c.cantidadCuotas, 0)
+                      return (
+                        <button
+                          key={m}
+                          onClick={() => setVerFinMes(m)}
+                          className="rounded-xl border border-slate-200 bg-white p-3 text-left transition hover:border-brand-300 hover:bg-slate-50"
+                        >
+                          <div className="text-sm font-medium capitalize text-slate-800">{etiquetaMes(m, true)}</div>
+                          <div className="text-xs text-slate-400">
+                            {cs.length} {cs.length === 1 ? 'compra' : 'compras'} · ver detalle
+                          </div>
+                          <div className="mt-1 text-sm font-semibold tabular text-slate-700">{money(total)}</div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
               {selUnif.size > 0 && (
                 <p className="mt-2 text-xs text-slate-400">
                   {selUnif.size} seleccionada(s). Marcá 2 o más para unificarlas en un plan de pago.
@@ -1211,6 +1247,60 @@ export default function Tarjetas() {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Pop-up: detalle de compras finalizadas en un mes */}
+      <Modal
+        abierto={verFinMes != null}
+        titulo={`Finalizadas · ${verFinMes ? etiquetaMes(verFinMes, true) : ''}`}
+        onCerrar={() => setVerFinMes(null)}
+        ancho="max-w-2xl"
+      >
+        {verFinMes && (() => {
+          const cs = finalizadasPorMes.find(([m]) => m === verFinMes)?.[1] ?? []
+          const total = cs.reduce((a, c) => a + c.importePorCuota * c.cantidadCuotas, 0)
+          return (
+            <div className="space-y-3">
+              <div className="overflow-x-auto rounded-lg border border-slate-200">
+                <table className="w-full min-w-[520px] text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                      <th className="px-3 py-2 font-medium">Compra</th>
+                      <th className="px-3 py-2 font-medium">Cuotas</th>
+                      <th className="px-3 py-2 text-right font-medium">Por cuota</th>
+                      <th className="px-3 py-2 text-right font-medium">Total</th>
+                      <th className="px-3 py-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cs.map((c) => (
+                      <tr key={c.id} className="border-b border-slate-100 last:border-0">
+                        <td className="px-3 py-2">
+                          <div className="font-medium text-slate-800">{c.descripcion}</div>
+                          <div className="text-xs text-slate-400">
+                            {[c.comercio, fechaLegible(c.fechaCompra)].filter(Boolean).join(' · ')}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-slate-600">{c.cantidadCuotas}</td>
+                        <td className="px-3 py-2 text-right tabular text-slate-700">{money(c.importePorCuota)}</td>
+                        <td className="px-3 py-2 text-right font-medium tabular text-slate-900">
+                          {money(c.importePorCuota * c.cantidadCuotas)}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <BotonAdjuntos entidadTipo="compra" entidadId={c.id!} titulo={`Comprobantes · ${c.descripcion}`} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex items-center justify-between border-t border-slate-200 pt-2 text-sm">
+                <span className="text-slate-500">{cs.length} compra(s) finalizada(s)</span>
+                <span className="font-semibold tabular text-slate-900">Total {money(total)}</span>
+              </div>
+            </div>
+          )
+        })()}
       </Modal>
 
       <ConfirmDialog

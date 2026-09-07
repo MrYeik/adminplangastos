@@ -30,9 +30,12 @@ export function cuotasEfectivas(
   return Math.max(0, compra.cantidadCuotas - (compra.cuotasAdelantadas ?? 0))
 }
 
-/** Mes en que se paga la primera cuota del préstamo (el mes de otorgamiento). */
-export function mesInicioPrestamo(prestamo: Pick<Prestamo, 'fecha'>): string {
-  return mesDeFecha(prestamo.fecha)
+/**
+ * Mes en que vence la primera cuota del préstamo. Usa `fechaPrimeraCuota` si
+ * está (puede ser meses después del otorgamiento); si no, el mes de la fecha.
+ */
+export function mesInicioPrestamo(prestamo: Pick<Prestamo, 'fecha' | 'fechaPrimeraCuota'>): string {
+  return mesDeFecha(prestamo.fechaPrimeraCuota || prestamo.fecha)
 }
 
 /**
@@ -42,7 +45,7 @@ export function mesInicioPrestamo(prestamo: Pick<Prestamo, 'fecha'>): string {
 export function importeCuotaPrestamoEnMes(
   prestamo: Pick<
     Prestamo,
-    'fecha' | 'cantidadCuotas' | 'valorCuota' | 'tipoAjuste' | 'ajusteMensualPct' | 'mesReferenciaAjuste'
+    'fecha' | 'fechaPrimeraCuota' | 'cantidadCuotas' | 'valorCuota' | 'tipoAjuste' | 'ajusteMensualPct' | 'mesReferenciaAjuste'
   >,
   mes: string,
 ): number {
@@ -65,7 +68,7 @@ export function cuotasDeCompra(
 
 /** Cronograma completo de cuotas de un préstamo. */
 export function cuotasDePrestamo(
-  prestamo: Pick<Prestamo, 'fecha' | 'cantidadCuotas' | 'valorCuota'>,
+  prestamo: Pick<Prestamo, 'fecha' | 'fechaPrimeraCuota' | 'cantidadCuotas' | 'valorCuota'>,
 ): CuotaCalculada[] {
   return generarCuotas(mesInicioPrestamo(prestamo), prestamo.cantidadCuotas, prestamo.valorCuota)
 }
@@ -249,7 +252,7 @@ export function resumenCompra(
 export function resumenPrestamo(
   prestamo: Pick<
     Prestamo,
-    'fecha' | 'cantidadCuotas' | 'valorCuota' | 'tipoAjuste' | 'ajusteMensualPct' | 'mesReferenciaAjuste'
+    'fecha' | 'fechaPrimeraCuota' | 'cantidadCuotas' | 'valorCuota' | 'tipoAjuste' | 'ajusteMensualPct' | 'mesReferenciaAjuste'
   >,
   mesRef: string,
 ): ResumenCuotas {

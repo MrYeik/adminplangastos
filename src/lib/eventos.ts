@@ -4,9 +4,9 @@
 import type { DatosFinancieros } from './agregados'
 import { ingresoAplicaAMes, gastoAplicaAMes } from './agregados'
 import { importeCompraEnMes, importeCuotaPrestamoEnMes } from './cuotas'
-import { importeServicioEnMes } from './servicios'
+import { importeServicioEnMes, serviciosDeTarjetaEnMes } from './servicios'
 import { importeVigenteEnMes } from './vigencia'
-import { diaDeFecha, fechaConDia, sumarMeses, diasEntreISO } from './dates'
+import { diaDeFecha, fechaConDia, sumarMeses, diasEntreISO, fechaVencimientoResumen } from './dates'
 
 export type TipoEvento = 'ingreso' | 'tarjeta' | 'prestamo' | 'servicio' | 'impuesto' | 'gasto'
 
@@ -149,4 +149,65 @@ export function obligacionesProximas(
     .map((e) => ({ ...e, diasRestantes: diasEntreISO(hoy, e.fecha) }))
     .filter((e) => e.diasRestantes >= 0 && e.diasRestantes <= maxDias)
     .sort((a, b) => a.diasRestantes - b.diasRestantes)
+}
+
+/**
+ * Recordatorios "de alto nivel": SOLO el vencimiento de cada resumen de TARJETA
+ * (uno por tarjeta, con el total del resumen), de los SERVICIOS (los que no son
+ * en tarjeta) y de las cuotas de PRÉSTAMOS. No incluye ítems internos (cada
+ * compra suelta, gastos ni impuestos). Ej: "Tarjeta Naranja · vence 10/09".
+ */
+export function recordatoriosProximos(
+  d: DatosFinancieros,
+  hoy: string,
+  maxDias: number,
+): Recordatorio[] {
+  const res: Recordatorio[] = []
+  const mesHoy = hoy.slice(0, 7)
+  const meses = [mesHoy, sumarMeses(mesHoy, 1)] // este mes y el siguiente
+  const servicios = d.servicios ?? []
+
+  // Tarjetas: un recordatorio por tarjeta y resumen (total del resumen).
+  for (const t of d.tarjetas ?? []) {
+    for (const m of meses) {
+      const venc = fechaVencimientoResumen(m, t.diaVencimiento, t.vencimientos)
+      if (!venc) continue
+      const dias = diasEntreISO(hoy, venc)
+      if (dias < 0 || dias > maxDias) continue
+      const total =
+        d.compras.filter((c) => c.tarjetaId === t.id).reduce((a, c) => a + importeCompraEnMes(c, m), 0) +
+        serviciosDeTarjetaEnMes(servicios, t.id!, m)
+      if (total <= 0) continue
+      res.push({ tipo: 'tarjeta', titulo: `Tarjeta ${t.nombre}`, fecha: venc, importe: total, diasRestantes: dias })
+    }
+  }
+
+  // Servicios que NO son débito en tarjeta (esos ya van en el resumen de la tarjeta).
+  for (const s of servicios) {
+    if (s.tarjetaId != null) continue
+    for (const m of meses) {
+      const imp = importeServicioEnMes(s, m)
+      if (imp <= 0) continue
+      const venc = fechaConDia(m, s.diaVencimiento)
+      const dias = diasEntreISO(hoy, venc)
+      if (dias >= 0 && dias <= maxDias) {
+        res.push({ tipo: 'servicio', titulo: s.descripcion, fecha: venc, importe: imp, diasRestantes: dias })
+      }
+    }
+  }
+
+  // Préstamos: la cuota vence el día de la 1ª cuota (o del otorgamiento).
+  for (const p of d.prestamos) {
+    for (const m of meses) {
+      const imp = importeCuotaPrestamoEnMes(p, m)
+      if (imp <= 0) continue
+      const venc = fechaConDia(m, diaDeFecha(p.fechaPrimeraCuota || p.fecha))
+      const dias = diasEntreISO(hoy, venc)
+      if (dias >= 0 && dias <= maxDias) {
+        res.push({ tipo: 'prestamo', titulo: p.entidad, fecha: venc, importe: imp, diasRestantes: dias })
+      }
+    }
+  }
+
+  return res.sort((a, b) => a.diasRestantes - b.diasRestantes)
 }

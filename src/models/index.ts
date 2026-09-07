@@ -117,11 +117,13 @@ export type TipoAjustePrestamo = 'fijo' | 'uva'
 export interface Prestamo {
   id?: ID
   entidad: string
-  fecha: string
+  fecha: string // fecha de otorgamiento
+  fechaPrimeraCuota?: string // vencimiento de la 1ª cuota (puede ser 1-3 meses después)
   capital: number // centavos
   cantidadCuotas: number
   valorCuota: number // centavos (la cuota "actual" en pesos)
   cuotaActual: number
+  mesesPagados?: string[] // meses 'YYYY-MM' cuya cuota ya se pagó
   observaciones?: string
   // Ajuste UVA: la cuota crece `ajusteMensualPct` % por mes desde el mes de
   // referencia (mesReferenciaAjuste). Si es 'fijo' o vacío, la cuota no varía.

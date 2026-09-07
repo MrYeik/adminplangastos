@@ -1,7 +1,7 @@
 // Agregación mensual: combina ingresos, gastos y cuotas (tarjetas + préstamos)
 // para un mes dado, considerando la recurrencia de ingresos/gastos.
 
-import type { Ingreso, Gasto, CompraTarjeta, Prestamo, Servicio, TipoGasto } from '@/models'
+import type { Ingreso, Gasto, CompraTarjeta, Prestamo, Servicio, Tarjeta, TipoGasto } from '@/models'
 import { mesDeFecha, sumarMeses } from './dates'
 import {
   importeCuotaPrestamoEnMes,
@@ -19,6 +19,7 @@ export interface DatosFinancieros {
   compras: CompraTarjeta[]
   prestamos: Prestamo[]
   servicios?: Servicio[]
+  tarjetas?: Tarjeta[]
 }
 
 /** ¿Un ingreso aplica a un mes? (recurrente: desde su mes en adelante) */

@@ -3,7 +3,7 @@ import EmptyState from '@/components/ui/EmptyState'
 import { BellRing, BellOff, CalendarClock } from 'lucide-react'
 import { useConfigStore } from '@/store/configStore'
 import { useDatosFinancieros } from '@/store/useDatosFinancieros'
-import { obligacionesProximas, ESTILO_TIPO, type Recordatorio } from '@/lib/eventos'
+import { recordatoriosProximos, ESTILO_TIPO, type Recordatorio } from '@/lib/eventos'
 import { hoyISO, fechaLegible } from '@/lib/dates'
 import { formatMoney } from '@/lib/money'
 
@@ -29,7 +29,7 @@ export default function Recordatorios() {
   const datos = useDatosFinancieros()
   const umbralMax = Math.max(...(config?.notificacionDias ?? [10]))
 
-  const proximas = obligacionesProximas(datos, hoyISO(), HORIZONTE_DIAS)
+  const proximas = recordatoriosProximos(datos, hoyISO(), HORIZONTE_DIAS)
   const urgentes = proximas.filter((r) => r.diasRestantes <= umbralMax)
   const totalUrgente = urgentes.reduce((a, r) => a + r.importe, 0)
 
@@ -70,7 +70,7 @@ export default function Recordatorios() {
   return (
     <PageShell
       titulo="Recordatorios"
-      descripcion={`Vencimientos de tarjetas, préstamos, servicios e impuestos · avisos a ${(
+      descripcion={`Vencimientos de tarjetas, servicios y préstamos · avisos a ${(
         config?.notificacionDias ?? [10, 5, 2, 1]
       ).join('/')} días`}
     >
