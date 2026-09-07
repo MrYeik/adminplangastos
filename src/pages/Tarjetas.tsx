@@ -735,8 +735,8 @@ export default function Tarjetas() {
 
               {/* Movimientos del resumen, con tilde de pagado por compra */}
               {comprasPeriodo.length > 0 && (
-                <div className="mt-4 overflow-hidden rounded-lg border border-slate-200">
-                  <table className="w-full text-sm">
+                <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
+                  <table className="w-full min-w-[560px] text-sm">
                     <tbody>
                       {comprasPeriodo.map((c) => {
                         const pagada = estaPagado(c.mesesPagados, mesDetalle)

@@ -10,7 +10,7 @@ interface Props {
 export default function PageShell({ titulo, descripcion, acciones, children }: Props) {
   return (
     <div className="p-6 md:p-8 max-w-7xl mx-auto">
-      <header className="flex items-start justify-between gap-4 mb-6">
+      <header className="flex flex-wrap items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">{titulo}</h1>
           {descripcion && <p className="text-sm text-slate-500 mt-1">{descripcion}</p>}

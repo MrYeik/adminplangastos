@@ -109,11 +109,11 @@ export default function Presupuesto() {
 
       {/* Comparación real vs presupuesto */}
       <div className="rounded-xl border border-slate-200 bg-white">
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
           <h2 className="font-semibold text-slate-800">
             Real vs. presupuesto · {etiquetaMes(mes)}
           </h2>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button variante="secondary" onClick={copiarMesAnterior}>
               <Copy size={16} /> Copiar mes anterior
             </Button>
@@ -123,7 +123,8 @@ export default function Presupuesto() {
           </div>
         </div>
 
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[600px] text-sm">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
               <th className="px-5 py-3 font-medium">Categoría</th>
@@ -196,6 +197,7 @@ export default function Presupuesto() {
             </tr>
           </tfoot>
         </table>
+        </div>
       </div>
 
       {/* Modal editar presupuesto */}
