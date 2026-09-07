@@ -39,18 +39,21 @@ export function mesInicioPrestamo(prestamo: Pick<Prestamo, 'fecha' | 'fechaPrime
 }
 
 /**
- * Importe de la cuota de un préstamo en un mes. Para préstamos UVA, la cuota
- * crece `ajusteMensualPct` % por mes desde el mes de referencia.
+ * Importe de la cuota de un préstamo en un mes. Si hay un valor real cargado
+ * para ese mes (`valoresReales`), gana ese. Para préstamos UVA, la cuota crece
+ * `ajusteMensualPct` % por mes desde el mes de referencia.
  */
 export function importeCuotaPrestamoEnMes(
   prestamo: Pick<
     Prestamo,
-    'fecha' | 'fechaPrimeraCuota' | 'cantidadCuotas' | 'valorCuota' | 'tipoAjuste' | 'ajusteMensualPct' | 'mesReferenciaAjuste'
+    'fecha' | 'fechaPrimeraCuota' | 'cantidadCuotas' | 'valorCuota' | 'tipoAjuste' | 'ajusteMensualPct' | 'mesReferenciaAjuste' | 'valoresReales'
   >,
   mes: string,
 ): number {
   const inicio = mesInicioPrestamo(prestamo)
   if (!tieneCuotaEnMes(inicio, prestamo.cantidadCuotas, mes)) return 0
+  const real = prestamo.valoresReales?.[mes]
+  if (real != null) return real // valor exacto del recibo, pisa la estimación
   if (prestamo.tipoAjuste === 'uva' && prestamo.ajusteMensualPct) {
     const ref = prestamo.mesReferenciaAjuste || inicio
     const factor = Math.pow(1 + prestamo.ajusteMensualPct / 100, diffMeses(ref, mes))
@@ -252,15 +255,17 @@ export function resumenCompra(
 export function resumenPrestamo(
   prestamo: Pick<
     Prestamo,
-    'fecha' | 'fechaPrimeraCuota' | 'cantidadCuotas' | 'valorCuota' | 'tipoAjuste' | 'ajusteMensualPct' | 'mesReferenciaAjuste'
+    'fecha' | 'fechaPrimeraCuota' | 'cantidadCuotas' | 'valorCuota' | 'tipoAjuste' | 'ajusteMensualPct' | 'mesReferenciaAjuste' | 'valoresReales'
   >,
   mesRef: string,
 ): ResumenCuotas {
   const inicio = mesInicioPrestamo(prestamo)
   const base = resumenDesde(inicio, prestamo.cantidadCuotas, prestamo.valorCuota, mesRef)
-  if (prestamo.tipoAjuste !== 'uva' || !prestamo.ajusteMensualPct) return base
+  const esUVA = prestamo.tipoAjuste === 'uva' && !!prestamo.ajusteMensualPct
+  const tieneReales = !!prestamo.valoresReales && Object.keys(prestamo.valoresReales).length > 0
+  if (!esUVA && !tieneReales) return base
 
-  // Cuota variable (UVA): recalcular totales sumando cuota por cuota.
+  // Cuota variable (UVA o con valores reales cargados): recalcular sumando cuota por cuota.
   let totalOriginal = 0
   let totalPendiente = 0
   for (const c of generarCuotas(inicio, prestamo.cantidadCuotas, 0)) {

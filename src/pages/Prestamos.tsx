@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Plus, Pencil, Trash2, Landmark, CalendarClock, ListChecks, CheckCircle2, Circle } from 'lucide-react'
+import { Plus, Pencil, Trash2, Landmark, CalendarClock, ListChecks, CheckCircle2, Circle, X } from 'lucide-react'
 import PageShell from '@/components/PageShell'
 import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
@@ -37,17 +37,41 @@ export default function Prestamos() {
   const [editId, setEditId] = useState<number | null>(null)
   const [aBorrar, setABorrar] = useState<Prestamo | null>(null)
   const [verCuotasDe, setVerCuotasDe] = useState<Prestamo | null>(null)
+  // Edición del valor real de una cuota (mes en edición + importe tipeado).
+  const [editCuotaMes, setEditCuotaMes] = useState<string | null>(null)
+  const [editValor, setEditValor] = useState(0)
 
-  // Cronograma de un préstamo: una fila por cuota (mes, importe, pagada).
+  // Cronograma de un préstamo: una fila por cuota (mes, importe, pagada, si es valor real).
   const cronograma = (p: Prestamo) => {
     const inicio = mesInicioPrestamo(p)
     return Array.from({ length: p.cantidadCuotas }, (_, i) => {
       const mes = sumarMeses(inicio, i)
-      return { nro: i + 1, mes, importe: importeCuotaPrestamoEnMes(p, mes), pagada: estaPagado(p.mesesPagados, mes) }
+      return {
+        nro: i + 1,
+        mes,
+        importe: importeCuotaPrestamoEnMes(p, mes),
+        pagada: estaPagado(p.mesesPagados, mes),
+        esReal: p.valoresReales?.[mes] != null,
+      }
     })
   }
   const togglePagoCuota = (p: Prestamo, mes: string) =>
     prestamosRepo.actualizar(p.id!, { mesesPagados: togglePagoMes(p.mesesPagados, mes) })
+
+  // Carga el valor real (del recibo) de una cuota; pisa la estimación de ese mes.
+  const guardarValorReal = async (p: Prestamo, mes: string) => {
+    if (editValor > 0) {
+      await prestamosRepo.actualizar(p.id!, { valoresReales: { ...(p.valoresReales ?? {}), [mes]: editValor } })
+    }
+    setEditCuotaMes(null)
+  }
+  // Quita el valor real y vuelve a la estimación.
+  const quitarValorReal = async (p: Prestamo, mes: string) => {
+    const vr = { ...(p.valoresReales ?? {}) }
+    delete vr[mes]
+    await prestamosRepo.actualizar(p.id!, { valoresReales: vr })
+    setEditCuotaMes(null)
+  }
 
   const nuevo = () => {
     setEditId(null)
@@ -360,7 +384,42 @@ export default function Prestamos() {
                         <tr key={f.nro} className={`border-b border-slate-100 last:border-0 ${f.pagada ? 'bg-emerald-50/40' : esPasado ? 'bg-rose-50/30' : ''}`}>
                           <td className="px-3 py-2 text-slate-500">Cuota {f.nro}</td>
                           <td className="px-3 py-2 capitalize text-slate-700">{etiquetaMes(f.mes, true)}</td>
-                          <td className="px-3 py-2 text-right tabular text-slate-900">{money(f.importe)}</td>
+                          <td className="px-3 py-2 text-right">
+                            {editCuotaMes === f.mes ? (
+                              <div className="flex items-center justify-end gap-1">
+                                <div className="w-24">
+                                  <MoneyInput value={editValor} onChange={setEditValor} />
+                                </div>
+                                <button onClick={() => guardarValorReal(p, f.mes)} className="rounded p-1 text-emerald-600 hover:bg-emerald-50" title="Guardar valor real">
+                                  <CheckCircle2 size={16} />
+                                </button>
+                                {f.esReal && (
+                                  <button onClick={() => quitarValorReal(p, f.mes)} className="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="Volver a la estimación">
+                                    <Trash2 size={14} />
+                                  </button>
+                                )}
+                                <button onClick={() => setEditCuotaMes(null)} className="rounded p-1 text-slate-400 hover:bg-slate-100" title="Cancelar">
+                                  <X size={16} />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-end gap-1.5">
+                                <span className="tabular text-slate-900">{money(f.importe)}</span>
+                                {f.esReal ? (
+                                  <span className="rounded bg-emerald-50 px-1 text-[10px] text-emerald-700">real</span>
+                                ) : p.tipoAjuste === 'uva' ? (
+                                  <span className="rounded bg-indigo-50 px-1 text-[10px] text-indigo-600" title="Estimado con ajuste UVA">est.</span>
+                                ) : null}
+                                <button
+                                  onClick={() => { setEditCuotaMes(f.mes); setEditValor(f.importe) }}
+                                  className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
+                                  title="Cargar el valor real de esta cuota"
+                                >
+                                  <Pencil size={14} />
+                                </button>
+                              </div>
+                            )}
+                          </td>
                           <td className="px-3 py-2 text-right">
                             <button
                               onClick={() => togglePagoCuota(verCuotasDe, f.mes)}
@@ -377,7 +436,10 @@ export default function Prestamos() {
                   </tbody>
                 </table>
               </div>
-              <p className="text-xs text-slate-400">Las cuotas de meses anteriores sin pagar quedan resaltadas en rojo.</p>
+              <p className="text-xs text-slate-400">
+                Impagas anteriores en rojo. Con el lápiz cargás el <strong>valor real</strong> de cada cuota
+                (del recibo); pisa la estimación UVA solo de ese mes. La papelera vuelve a la estimación.
+              </p>
             </div>
           )
         })()}

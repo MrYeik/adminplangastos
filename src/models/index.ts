@@ -124,6 +124,7 @@ export interface Prestamo {
   valorCuota: number // centavos (la cuota "actual" en pesos)
   cuotaActual: number
   mesesPagados?: string[] // meses 'YYYY-MM' cuya cuota ya se pagó
+  valoresReales?: Record<string, number> // valor real cargado por mes 'YYYY-MM' (pisa la estimación UVA)
   observaciones?: string
   // Ajuste UVA: la cuota crece `ajusteMensualPct` % por mes desde el mes de
   // referencia (mesReferenciaAjuste). Si es 'fijo' o vacío, la cuota no varía.

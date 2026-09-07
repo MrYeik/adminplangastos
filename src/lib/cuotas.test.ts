@@ -219,4 +219,18 @@ describe('motor de cuotas', () => {
     const r = resumenPrestamo(uva, '2026-07')
     expect(r.totalPendiente).toBeGreaterThan(120_000_00)
   })
+
+  it('préstamo UVA: el valor real de una cuota pisa la estimación de ese mes', () => {
+    const uva = {
+      fecha: '2026-07-05',
+      cantidadCuotas: 12,
+      valorCuota: 10_000_00,
+      tipoAjuste: 'uva' as const,
+      ajusteMensualPct: 5,
+      mesReferenciaAjuste: '2026-07',
+      valoresReales: { '2026-08': 10_800_00 }, // la 2ª cuota fue en realidad $10.800
+    }
+    expect(importeCuotaPrestamoEnMes(uva, '2026-08')).toBe(10_800_00) // real, no la estimada 10.500
+    expect(importeCuotaPrestamoEnMes(uva, '2026-09')).toBe(11_025_00) // el resto sigue estimado
+  })
 })
