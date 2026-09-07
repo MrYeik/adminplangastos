@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { useRecordatorios } from '@/store/useRecordatorios'
 import {
@@ -17,6 +18,8 @@ import {
   Bell,
   Settings,
   BookOpen,
+  Menu,
+  X,
 } from 'lucide-react'
 
 const NAV = [
@@ -40,15 +43,44 @@ const NAV = [
 
 export default function Layout() {
   const recordatorios = useRecordatorios()
+  const [menuAbierto, setMenuAbierto] = useState(false)
+
+  const cerrarMenu = () => setMenuAbierto(false)
 
   return (
     <div className="flex min-h-screen">
-      <aside className="w-60 shrink-0 bg-slate-900 text-slate-200 flex flex-col">
-        <div className="px-5 py-5 border-b border-slate-800">
-          <div className="text-xl font-bold text-white tracking-tight">Aura<span className="text-brand-400">+</span></div>
-          <div className="text-xs text-slate-400">Finanzas del Hogar</div>
+      {/* Fondo oscuro al abrir el menú en móvil */}
+      {menuAbierto && (
+        <div
+          className="fixed inset-0 z-30 bg-black/50 md:hidden"
+          onClick={cerrarMenu}
+          aria-hidden
+        />
+      )}
+
+      {/* Barra lateral: fija/deslizante en móvil, estática en escritorio */}
+      <aside
+        className={`fixed inset-y-0 z-40 flex w-60 shrink-0 flex-col bg-slate-900 text-slate-200 transition-[left] duration-200 md:static md:left-0 md:z-auto ${
+          menuAbierto ? 'left-0' : '-left-60'
+        }`}
+      >
+        <div className="flex items-center justify-between border-b border-slate-800 px-5 py-5">
+          <div>
+            <div className="text-xl font-bold tracking-tight text-white">
+              Aura<span className="text-brand-400">+</span>
+            </div>
+            <div className="text-xs text-slate-400">Finanzas del Hogar</div>
+          </div>
+          <button
+            type="button"
+            onClick={cerrarMenu}
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white md:hidden"
+            aria-label="Cerrar menú"
+          >
+            <X size={20} />
+          </button>
         </div>
-        <nav className="flex-1 py-3 overflow-y-auto">
+        <nav className="flex-1 overflow-y-auto py-3">
           {NAV.map(({ to, label, icon: Icon, end }) => {
             const badge = to === '/recordatorios' ? recordatorios.length : 0
             return (
@@ -56,6 +88,7 @@ export default function Layout() {
                 key={to}
                 to={to}
                 end={end}
+                onClick={cerrarMenu}
                 className={({ isActive }) =>
                   `flex items-center gap-3 px-5 py-2.5 text-sm transition-colors ${
                     isActive
@@ -75,14 +108,42 @@ export default function Layout() {
             )
           })}
         </nav>
-        <div className="px-5 py-3 text-[11px] text-slate-500 border-t border-slate-800">
+        <div className="border-t border-slate-800 px-5 py-3 text-[11px] text-slate-500">
           v0.1 · datos locales
         </div>
       </aside>
 
-      <main className="flex-1 overflow-x-auto">
-        <Outlet />
-      </main>
+      {/* Columna de contenido */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* Barra superior solo en móvil */}
+        <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 md:hidden">
+          <button
+            type="button"
+            onClick={() => setMenuAbierto(true)}
+            className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100"
+            aria-label="Abrir menú"
+          >
+            <Menu size={22} />
+          </button>
+          <div className="text-lg font-bold tracking-tight text-slate-900">
+            Aura<span className="text-brand-500">+</span>
+          </div>
+          {recordatorios.length > 0 && (
+            <NavLink
+              to="/recordatorios"
+              onClick={cerrarMenu}
+              className="ml-auto flex items-center gap-1 rounded-full bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-600"
+            >
+              <Bell size={14} />
+              {recordatorios.length}
+            </NavLink>
+          )}
+        </header>
+
+        <main className="flex-1 overflow-x-auto">
+          <Outlet />
+        </main>
+      </div>
     </div>
   )
 }
