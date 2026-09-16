@@ -27,6 +27,7 @@ export interface Ingreso {
   importes?: ImporteVigente[] // cambios de importe {desde, importe} que rigen a futuro sin tocar el pasado
   mesesCobrado?: string[] // meses 'YYYY-MM' en que el ingreso se depositó/cobró (recién ahí suma al saldo real)
   observaciones?: string
+  origenPrestadoId?: number // si es una devolución de dinero prestado (generado automáticamente)
 }
 
 export interface Gasto {

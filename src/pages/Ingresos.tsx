@@ -10,7 +10,6 @@ import MoneyInput from '@/components/ui/MoneyInput'
 import { Campo, TextInput, Checkbox } from '@/components/ui/Form'
 import BotonAdjuntos from '@/components/BotonAdjuntos'
 import MonthNav from '@/components/ui/MonthNav'
-import ResumenCategorias, { agruparPorCategoria } from '@/components/ResumenCategorias'
 import { ingresosRepo } from '@/db/repos/ingresos'
 import { useConfigStore } from '@/store/configStore'
 import { useDatosFinancieros } from '@/store/useDatosFinancieros'
@@ -100,10 +99,7 @@ export default function Ingresos() {
   // Saldo libre arrastrado del mes anterior (cuenta corriente), como ingreso.
   const mesInicio = config?.mesInicioProyeccion ?? mes
   const arrastre = saldoArrastrado(datos, mes, mesInicio)
-  const total = totalBase + arrastre
 
-  const porCategoria = agruparPorCategoria(ingresosDelMes, (i) => i.categoria, importeMes)
-  const datosPie = arrastre > 0 ? [{ name: 'Saldo mes anterior', value: arrastre }, ...porCategoria] : porCategoria
   const hayFilas = ingresosDelMes.length > 0 || arrastre !== 0
 
   // Cobrado (depositado) vs a cobrar (pendiente) del mes.
@@ -131,8 +127,6 @@ export default function Ingresos() {
         </div>
       }
     >
-      <ResumenCategorias etiquetaTotal={`Total ingresos · ${etiquetaMes(mes)}`} total={total} data={datosPie} />
-
       {hayFilas && (
         <div className="mb-5 grid grid-cols-2 gap-4 sm:max-w-md">
           <div className="rounded-xl border border-slate-200 bg-white p-4">

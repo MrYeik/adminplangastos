@@ -22,7 +22,8 @@ import EmptyState from '@/components/ui/EmptyState'
 import MoneyInput from '@/components/ui/MoneyInput'
 import BotonAdjuntos from '@/components/BotonAdjuntos'
 import MonthNav from '@/components/ui/MonthNav'
-import ResumenCategorias, { agruparPorCategoria } from '@/components/ResumenCategorias'
+import SeccionColapsable from '@/components/ui/SeccionColapsable'
+import PagadosPorMes from '@/components/ui/PagadosPorMes'
 import { Campo, TextInput, Select } from '@/components/ui/Form'
 import { serviciosRepo } from '@/db/repos/servicios'
 import { useConfigStore } from '@/store/configStore'
@@ -37,7 +38,9 @@ import {
   importesOrdenados,
 } from '@/lib/servicios'
 import { gastoAplicaAMes } from '@/lib/agregados'
+import { importeVigenteEnMes } from '@/lib/vigencia'
 import { importeCompraEnMes } from '@/lib/cuotas'
+import { agruparPagosPorMes, mergeGruposMes } from '@/lib/historial'
 import type { Servicio, Tarjeta, Gasto, CompraTarjeta } from '@/models'
 
 interface FormState {
@@ -164,7 +167,6 @@ export default function Servicios() {
   }
 
   const tarjetaPorId = new Map(tarjetas.map((t) => [t.id!, t]))
-  const grupoTarjeta = (id?: number | null) => `Tarjeta ${nombreTarjeta.get(id ?? -1) ?? ''}`.trim()
 
   // Servicios que caen este mes según su origen.
   const activos = servicios.filter((s) => servicioActivoEnMes(s, mes))
@@ -184,16 +186,23 @@ export default function Servicios() {
     activos.filter((s) => s.tarjetaId == null).reduce((a, s) => a + importeServicioEnMes(s, mes), 0) +
     totalGastos
 
-  // Gráfico discriminativo: en tarjeta agrupa por tarjeta; el resto, por categoría.
-  const paresPie: { grupo: string; importe: number }[] = [
-    ...activos.map((s) => ({
-      grupo: s.tarjetaId != null ? grupoTarjeta(s.tarjetaId) : s.categoria,
-      importe: importeServicioEnMes(s, mes),
-    })),
-    ...comprasMes.map((c) => ({ grupo: grupoTarjeta(c.tarjetaId), importe: importeCompraEnMes(c, mes) })),
-    ...gastosMes.map((g) => ({ grupo: g.categoria, importe: g.importe })),
-  ]
-  const porGrupo = agruparPorCategoria(paresPie, (p) => p.grupo, (p) => p.importe)
+  // Historial "pagados por mes": servicios comunes + gastos marcados como servicio.
+  const pagadosPorMes = mergeGruposMes(
+    agruparPagosPorMes(servicios, {
+      meses: (s) => s.mesesPagados,
+      importeEnMes: (s, m) => importeServicioEnMes(s, m),
+      descripcion: (s) => s.descripcion,
+      id: (s, m) => `s${s.id}-${m}`,
+      detalle: (s) => s.categoria,
+    }),
+    agruparPagosPorMes(gastosServicio, {
+      meses: (g) => g.mesesPagados,
+      importeEnMes: (g, m) => importeVigenteEnMes(g.importe, g.importes, m),
+      descripcion: (g) => g.descripcion,
+      id: (g, m) => `g${g.id}-${m}`,
+      detalle: (g) => g.categoria,
+    }),
+  )
 
   return (
     <PageShell
@@ -209,26 +218,18 @@ export default function Servicios() {
       }
     >
       {hayAlgo && (
-        <>
-          <ResumenCategorias
-            etiquetaTotal={`Servicios reales · ${etiquetaMes(mes)}`}
-            total={real}
-            data={porGrupo}
-            secundario={{ label: 'A pagar (sin tarjeta)', valor: aPagar }}
-          />
-          <div className="mb-5 grid grid-cols-2 gap-4 sm:max-w-md">
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="text-xs text-slate-500">Activos este mes</div>
-              <div className="mt-1 text-xl font-bold text-slate-800 tabular">
-                {activos.length + comprasMes.length + gastosMes.length}
-              </div>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="text-xs text-slate-500">En tarjeta</div>
-              <div className="mt-1 text-xl font-bold text-amber-600 tabular">{enTarjetaCount}</div>
+        <div className="mb-5 grid grid-cols-2 gap-4 sm:max-w-md">
+          <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <div className="text-xs text-slate-500">Activos este mes</div>
+            <div className="mt-1 text-xl font-bold text-slate-800 tabular">
+              {activos.length + comprasMes.length + gastosMes.length}
             </div>
           </div>
-        </>
+          <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <div className="text-xs text-slate-500">En tarjeta</div>
+            <div className="mt-1 text-xl font-bold text-amber-600 tabular">{enTarjetaCount}</div>
+          </div>
+        </div>
       )}
 
       {!hayAlgo ? (
@@ -243,6 +244,16 @@ export default function Servicios() {
           }
         />
       ) : (
+        <>
+        <SeccionColapsable
+          titulo={`Activos · ${etiquetaMes(mes)}`}
+          subtitulo={
+            <span>
+              real <span className="tabular">{formatMoney(real)}</span> · a pagar{' '}
+              <span className="tabular">{formatMoney(aPagar)}</span>
+            </span>
+          }
+        >
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
           <table className="w-full min-w-[640px] text-sm">
             <thead>
@@ -448,6 +459,10 @@ export default function Servicios() {
             </tbody>
           </table>
         </div>
+        </SeccionColapsable>
+
+        <PagadosPorMes grupos={pagadosPorMes} titulo="Pagados por mes" tituloPopup="Servicios pagados" />
+        </>
       )}
 
       {/* Modal alta/edición */}

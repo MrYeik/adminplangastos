@@ -7,11 +7,16 @@ import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import EmptyState from '@/components/ui/EmptyState'
 import MoneyInput from '@/components/ui/MoneyInput'
+import SeccionColapsable from '@/components/ui/SeccionColapsable'
+import PagadosPorMes from '@/components/ui/PagadosPorMes'
 import { Campo, TextInput } from '@/components/ui/Form'
 import { prestadosRepo } from '@/db/repos/prestados'
+import { ingresosRepo } from '@/db/repos/ingresos'
+import { db } from '@/db/db'
 import { useConfigStore } from '@/store/configStore'
-import { hoyISO, fechaLegible } from '@/lib/dates'
+import { hoyISO, fechaLegible, etiquetaMes, mesDeFecha } from '@/lib/dates'
 import { saldoPrestado, totalPagado, estadoDerivado } from '@/lib/prestado'
+import type { GrupoMes, ItemPagado } from '@/lib/historial'
 import type { Prestado, EstadoPrestado, PagoParcial } from '@/models'
 
 const VACIO: Omit<Prestado, 'id'> = {
@@ -43,6 +48,7 @@ export default function Prestado() {
   const [aBorrar, setABorrar] = useState<Prestado | null>(null)
   const [pagoDe, setPagoDe] = useState<Prestado | null>(null)
   const [montoPago, setMontoPago] = useState(0)
+  const [fechaPago, setFechaPago] = useState(hoyISO())
 
   const nuevo = () => {
     setEditId(null)
@@ -62,17 +68,48 @@ export default function Prestado() {
 
   const registrarPago = async () => {
     if (!pagoDe || montoPago <= 0) return
-    const pago: PagoParcial = { fecha: hoyISO(), importe: montoPago }
+    const pago: PagoParcial = { fecha: fechaPago, importe: montoPago }
     const pagos = [...(pagoDe.pagos ?? []), pago]
     await prestadosRepo.actualizar(pagoDe.id!, {
       pagos,
       estado: estadoDerivado({ importe: pagoDe.importe, pagos }),
+    })
+    // La devolución se registra como ingreso de dinero, en el mes en que se devolvió.
+    await ingresosRepo.agregar({
+      descripcion: `Devolución · ${pagoDe.persona}`,
+      categoria: 'Devolución de préstamo',
+      fecha: fechaPago,
+      importe: montoPago,
+      repeticionMensual: false,
+      mesesCobrado: [mesDeFecha(fechaPago)],
+      origenPrestadoId: pagoDe.id!,
     })
     setPagoDe(null)
     setMontoPago(0)
   }
 
   const totalPorCobrar = prestados.reduce((acc, p) => acc + saldoPrestado(p), 0)
+  // Activos = con saldo por cobrar. Historial "cobrado por mes" = devoluciones por mes.
+  const activos = prestados.filter((p) => saldoPrestado(p) > 0)
+  const cobradosPorMes: GrupoMes[] = (() => {
+    const map = new Map<string, ItemPagado[]>()
+    for (const p of prestados) {
+      for (const [idx, pago] of (p.pagos ?? []).entries()) {
+        const m = mesDeFecha(pago.fecha)
+        const arr = map.get(m) ?? []
+        arr.push({
+          id: `${p.id}-${idx}`,
+          descripcion: p.persona,
+          detalle: p.concepto || fechaLegible(pago.fecha),
+          importe: pago.importe,
+        })
+        map.set(m, arr)
+      }
+    }
+    return [...map.entries()]
+      .map(([m, items]) => ({ mes: m, items, total: items.reduce((a, x) => a + x.importe, 0) }))
+      .sort((a, b) => (a.mes < b.mes ? 1 : -1))
+  })()
 
   return (
     <PageShell
@@ -95,7 +132,7 @@ export default function Prestado() {
           <div className="rounded-xl border border-slate-200 bg-white p-4">
             <div className="text-xs text-slate-500">Registros activos</div>
             <div className="mt-1 text-xl font-bold text-slate-800 tabular">
-              {prestados.filter((p) => saldoPrestado(p) > 0).length}
+              {activos.length}
             </div>
           </div>
         </div>
@@ -113,21 +150,31 @@ export default function Prestado() {
           }
         />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-          <table className="w-full min-w-[640px] text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                <th className="px-4 py-3 font-medium">Persona</th>
-                <th className="px-4 py-3 font-medium">Concepto</th>
-                <th className="px-4 py-3 text-right font-medium">Importe</th>
-                <th className="px-4 py-3 text-right font-medium">Pagado</th>
-                <th className="px-4 py-3 text-right font-medium">Saldo</th>
-                <th className="px-4 py-3 font-medium">Estado</th>
-                <th className="px-4 py-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {prestados.map((p) => {
+        <>
+        <SeccionColapsable
+          titulo="Activos · por cobrar"
+          subtitulo={<span className="tabular">{money(totalPorCobrar)}</span>}
+        >
+          {activos.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-slate-200 p-4 text-sm text-slate-400">
+              No queda nada por cobrar. Lo devuelto figura abajo, en “Cobrado por mes”.
+            </p>
+          ) : (
+          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+            <table className="w-full min-w-[640px] text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <th className="px-4 py-3 font-medium">Persona</th>
+                  <th className="px-4 py-3 font-medium">Concepto</th>
+                  <th className="px-4 py-3 text-right font-medium">Importe</th>
+                  <th className="px-4 py-3 text-right font-medium">Pagado</th>
+                  <th className="px-4 py-3 text-right font-medium">Saldo</th>
+                  <th className="px-4 py-3 font-medium">Estado</th>
+                  <th className="px-4 py-3"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {activos.map((p) => {
                 const estado = estadoDerivado(p)
                 const saldo = saldoPrestado(p)
                 return (
@@ -160,10 +207,11 @@ export default function Prestado() {
                             onClick={() => {
                               setPagoDe(p)
                               setMontoPago(0)
+                              setFechaPago(hoyISO())
                             }}
                             className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
                             aria-label="Registrar pago"
-                            title="Registrar pago"
+                            title="Registrar pago (se carga como ingreso)"
                           >
                             <CircleDollarSign size={16} />
                           </button>
@@ -187,9 +235,14 @@ export default function Prestado() {
                   </tr>
                 )
               })}
-            </tbody>
-          </table>
-        </div>
+              </tbody>
+            </table>
+          </div>
+          )}
+        </SeccionColapsable>
+
+        <PagadosPorMes grupos={cobradosPorMes} titulo="Cobrado por mes" tituloPopup="Devoluciones cobradas" />
+        </>
       )}
 
       {/* Modal alta/edición */}
@@ -268,11 +321,17 @@ export default function Prestado() {
             <Campo label="Monto del pago" requerido>
               <MoneyInput value={montoPago} onChange={setMontoPago} autoFocus />
             </Campo>
+            <Campo label="Fecha de la devolución" requerido>
+              <TextInput type="date" value={fechaPago} onChange={(e) => setFechaPago(e.target.value)} />
+            </Campo>
+            <p className="rounded-lg bg-emerald-50 p-3 text-xs text-emerald-700">
+              Se registra como <strong>ingreso de dinero</strong> en {etiquetaMes(mesDeFecha(fechaPago), true)}.
+            </p>
             <div className="flex justify-end gap-2 pt-2">
               <Button variante="secondary" onClick={() => setPagoDe(null)}>
                 Cancelar
               </Button>
-              <Button onClick={registrarPago} disabled={montoPago <= 0}>
+              <Button onClick={registrarPago} disabled={montoPago <= 0 || !fechaPago}>
                 Registrar pago
               </Button>
             </div>
@@ -285,7 +344,12 @@ export default function Prestado() {
         mensaje={`¿Eliminar el registro de "${aBorrar?.persona}"?`}
         onCancelar={() => setABorrar(null)}
         onConfirmar={async () => {
-          if (aBorrar?.id != null) await prestadosRepo.eliminar(aBorrar.id)
+          if (aBorrar?.id != null) {
+            // Elimina también los ingresos generados por sus devoluciones.
+            const ligados = await db.ingresos.filter((i) => i.origenPrestadoId === aBorrar.id).toArray()
+            await Promise.all(ligados.map((i) => ingresosRepo.eliminar(i.id!)))
+            await prestadosRepo.eliminar(aBorrar.id)
+          }
           setABorrar(null)
         }}
       />

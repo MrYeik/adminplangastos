@@ -1,12 +1,15 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Plus, Pencil, Trash2, Landmark, CalendarClock, ListChecks, CheckCircle2, Circle, X } from 'lucide-react'
+import { Plus, Pencil, Trash2, Landmark, ListChecks, CheckCircle2, Circle, X } from 'lucide-react'
 import PageShell from '@/components/PageShell'
 import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import EmptyState from '@/components/ui/EmptyState'
 import MoneyInput from '@/components/ui/MoneyInput'
+import MonthNav from '@/components/ui/MonthNav'
+import SeccionColapsable from '@/components/ui/SeccionColapsable'
+import PagadosPorMes from '@/components/ui/PagadosPorMes'
 import { Campo, TextInput, Select } from '@/components/ui/Form'
 import BotonAdjuntos from '@/components/BotonAdjuntos'
 import { prestamosRepo } from '@/db/repos/prestamos'
@@ -14,6 +17,7 @@ import { useConfigStore } from '@/store/configStore'
 import { hoyISO, fechaLegible, etiquetaMes, mesActual, sumarMeses } from '@/lib/dates'
 import { resumenPrestamo, mesInicioPrestamo, nroCuotaEnMes, importeCuotaPrestamoEnMes } from '@/lib/cuotas'
 import { estaPagado, togglePagoMes } from '@/lib/pagos'
+import { agruparPagosPorMes } from '@/lib/historial'
 import type { Prestamo } from '@/models'
 
 const VACIO: Omit<Prestamo, 'id'> = {
@@ -31,6 +35,7 @@ const VACIO: Omit<Prestamo, 'id'> = {
 export default function Prestamos() {
   const money = useConfigStore((s) => s.money)
   const mesRef = mesActual()
+  const [mes, setMes] = useState(mesActual())
   const prestamos = useLiveQuery(() => prestamosRepo.todos(), [], [] as Prestamo[])
 
   const [form, setForm] = useState<Omit<Prestamo, 'id'> | null>(null)
@@ -96,16 +101,32 @@ export default function Prestamos() {
     (acc, p) => acc + resumenPrestamo(p, mesRef).totalPendiente,
     0,
   )
-  const activos = prestamos.filter((p) => resumenPrestamo(p, mesRef).activa).length
+  // Préstamos con cuota en el mes navegado (activos ese mes).
+  const activosDelMes = prestamos.filter((p) => importeCuotaPrestamoEnMes(p, mes) > 0)
+  const cuotasMesTotal = activosDelMes.reduce((a, p) => a + importeCuotaPrestamoEnMes(p, mes), 0)
+  // Historial "pagadas por mes": cuotas marcadas como pagadas, agrupadas por mes.
+  const pagadosPorMes = agruparPagosPorMes(prestamos, {
+    meses: (p) => p.mesesPagados,
+    importeEnMes: (p, m) => importeCuotaPrestamoEnMes(p, m),
+    descripcion: (p) => p.entidad,
+    id: (p, m) => `${p.id}-${m}`,
+    detalle: (p, m) => {
+      const nro = nroCuotaEnMes(mesInicioPrestamo(p), p.cantidadCuotas, m)
+      return nro ? `Cuota ${nro} de ${p.cantidadCuotas}` : undefined
+    },
+  })
 
   return (
     <PageShell
       titulo="Préstamos"
-      descripcion="Préstamos personales. El sistema calcula cuotas restantes y saldo."
+      descripcion="Préstamos personales, mes a mes: cuota del mes, activos y pagadas por mes."
       acciones={
-        <Button onClick={nuevo}>
-          <Plus size={18} /> Nuevo préstamo
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <MonthNav mes={mes} onCambiar={setMes} />
+          <Button onClick={nuevo}>
+            <Plus size={18} /> Nuevo préstamo
+          </Button>
+        </div>
       }
     >
       {prestamos.length > 0 && (
@@ -117,8 +138,8 @@ export default function Prestamos() {
             </div>
           </div>
           <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <div className="text-xs text-slate-500">Préstamos activos</div>
-            <div className="mt-1 text-xl font-bold text-slate-800 tabular">{activos}</div>
+            <div className="text-xs text-slate-500">Cuotas · {etiquetaMes(mes)}</div>
+            <div className="mt-1 text-xl font-bold text-slate-800 tabular">{money(cuotasMesTotal)}</div>
           </div>
         </div>
       )}
@@ -135,99 +156,118 @@ export default function Prestamos() {
           }
         />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-          <table className="w-full min-w-[640px] text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                <th className="px-4 py-3 font-medium">Entidad</th>
-                <th className="px-4 py-3 font-medium">Cuota</th>
-                <th className="px-4 py-3 text-right font-medium">Valor cuota</th>
-                <th className="px-4 py-3 text-right font-medium">Pendiente</th>
-                <th className="px-4 py-3 font-medium">Próx. venc.</th>
-                <th className="px-4 py-3 font-medium">Finaliza</th>
-                <th className="px-4 py-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {prestamos.map((p) => {
-                const r = resumenPrestamo(p, mesRef)
-                return (
-                  <tr
-                    key={p.id}
-                    className={`border-b border-slate-100 last:border-0 hover:bg-slate-50 ${
-                      !r.activa ? 'opacity-50' : ''
-                    }`}
-                  >
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5 font-medium text-slate-800">
-                        {p.entidad}
-                        {p.tipoAjuste === 'uva' && (
-                          <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700">
-                            UVA
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-xs text-slate-400">
-                        Capital {money(p.capital)} · {fechaLegible(p.fecha)}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                        {r.activa ? `${r.cuotaActual} de ${r.cantidadCuotas}` : 'Finalizado'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right tabular text-slate-700">
-                      {money(p.valorCuota)}
-                    </td>
-                    <td className="px-4 py-3 text-right font-medium tabular text-slate-900">
-                      {money(r.totalPendiente)}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {r.proximoVencimiento ? (
-                        <span className="inline-flex items-center gap-1">
-                          <CalendarClock size={13} className="text-amber-500" />
-                          {etiquetaMes(r.proximoVencimiento)}
+        <>
+        <SeccionColapsable
+          titulo={`Activos · ${etiquetaMes(mes)}`}
+          subtitulo={<span className="tabular">{money(cuotasMesTotal)}</span>}
+        >
+          {activosDelMes.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-slate-200 p-4 text-sm text-slate-400">
+              Ningún préstamo tiene cuota en {etiquetaMes(mes)}. Cambiá de mes con las flechas.
+            </p>
+          ) : (
+          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+            <table className="w-full min-w-[640px] text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <th className="px-4 py-3 font-medium">Entidad</th>
+                  <th className="px-4 py-3 font-medium">Cuota</th>
+                  <th className="px-4 py-3 text-right font-medium">Valor cuota</th>
+                  <th className="px-4 py-3 font-medium">Pago</th>
+                  <th className="px-4 py-3 text-right font-medium">Pendiente</th>
+                  <th className="px-4 py-3 font-medium">Finaliza</th>
+                  <th className="px-4 py-3"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {activosDelMes.map((p) => {
+                  const r = resumenPrestamo(p, mesRef)
+                  const nro = nroCuotaEnMes(mesInicioPrestamo(p), p.cantidadCuotas, mes)
+                  const cuotaMes = importeCuotaPrestamoEnMes(p, mes)
+                  const pagada = estaPagado(p.mesesPagados, mes)
+                  const esReal = p.valoresReales?.[mes] != null
+                  return (
+                    <tr key={p.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5 font-medium text-slate-800">
+                          {p.entidad}
+                          {p.tipoAjuste === 'uva' && (
+                            <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700">
+                              UVA
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-slate-400">
+                          Capital {money(p.capital)} · {fechaLegible(p.fecha)}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+                          {nro} de {p.cantidadCuotas}
                         </span>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {r.mesFin ? etiquetaMes(r.mesFin) : '—'}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-1">
+                      </td>
+                      <td className="px-4 py-3 text-right font-medium tabular text-slate-900">
+                        {money(cuotaMes)}
+                        {esReal ? (
+                          <span className="ml-1 rounded bg-emerald-50 px-1 text-[10px] text-emerald-700">real</span>
+                        ) : p.tipoAjuste === 'uva' ? (
+                          <span className="ml-1 rounded bg-indigo-50 px-1 text-[10px] text-indigo-600" title="Estimado con ajuste UVA">est.</span>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-3">
                         <button
-                          onClick={() => setVerCuotasDe(p)}
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"
-                          aria-label="Ver cuotas por mes"
-                          title="Ver cuotas por mes (pagadas y pendientes)"
+                          onClick={() => togglePagoCuota(p, mes)}
+                          className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs ${pagada ? 'text-emerald-600' : 'text-slate-400'} hover:bg-slate-100`}
+                          title={pagada ? `Cuota pagada en ${etiquetaMes(mes)} (tocá para desmarcar)` : `Marcar cuota pagada en ${etiquetaMes(mes)}`}
                         >
-                          <ListChecks size={16} />
+                          {pagada ? <CheckCircle2 size={16} /> : <Circle size={16} />}
+                          {pagada ? 'Pagada' : 'Pendiente'}
                         </button>
-                        <BotonAdjuntos entidadTipo="prestamo" entidadId={p.id!} titulo={`Contratos · ${p.entidad}`} />
-                        <button
-                          onClick={() => editar(p)}
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
-                          aria-label="Editar"
-                        >
-                          <Pencil size={16} />
-                        </button>
-                        <button
-                          onClick={() => setABorrar(p)}
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                          aria-label="Eliminar"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+                      </td>
+                      <td className="px-4 py-3 text-right font-medium tabular text-slate-900">
+                        {money(r.totalPendiente)}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">
+                        {r.mesFin ? etiquetaMes(r.mesFin) : '—'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex justify-end gap-1">
+                          <button
+                            onClick={() => setVerCuotasDe(p)}
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"
+                            aria-label="Ver cuotas por mes"
+                            title="Ver todas las cuotas (pagadas y pendientes) y cargar el valor real"
+                          >
+                            <ListChecks size={16} />
+                          </button>
+                          <BotonAdjuntos entidadTipo="prestamo" entidadId={p.id!} titulo={`Contratos · ${p.entidad}`} />
+                          <button
+                            onClick={() => editar(p)}
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
+                            aria-label="Editar"
+                          >
+                            <Pencil size={16} />
+                          </button>
+                          <button
+                            onClick={() => setABorrar(p)}
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                            aria-label="Eliminar"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          )}
+        </SeccionColapsable>
+
+        <PagadosPorMes grupos={pagadosPorMes} titulo="Pagadas por mes" tituloPopup="Cuotas pagadas" />
+        </>
       )}
 
       <Modal

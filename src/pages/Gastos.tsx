@@ -8,9 +8,11 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import EmptyState from '@/components/ui/EmptyState'
 import MoneyInput from '@/components/ui/MoneyInput'
 import MonthNav from '@/components/ui/MonthNav'
+import SeccionColapsable from '@/components/ui/SeccionColapsable'
+import PagadosPorMes from '@/components/ui/PagadosPorMes'
 import { Campo, TextInput, Select, Checkbox } from '@/components/ui/Form'
 import BotonAdjuntos from '@/components/BotonAdjuntos'
-import ResumenCategorias, { agruparPorCategoria } from '@/components/ResumenCategorias'
+import { agruparPagosPorMes } from '@/lib/historial'
 import { gastosRepo } from '@/db/repos/gastos'
 import { useConfigStore } from '@/store/configStore'
 import { gastoAplicaAMes } from '@/lib/agregados'
@@ -106,7 +108,14 @@ export default function Gastos() {
     .filter((g) => estaPagado(g.mesesPagados, mes))
     .reduce((a, g) => a + importeMes(g), 0)
   const falta = total - pagado
-  const porCategoria = agruparPorCategoria(gastosDelMes, (g) => g.categoria, importeMes)
+  // Historial: gastos pagados agrupados por mes (con su importe vigente de ese mes).
+  const pagadosPorMes = agruparPagosPorMes(gastos, {
+    meses: (g) => g.mesesPagados,
+    importeEnMes: (g, m) => importeVigenteEnMes(g.importe, g.importes, m),
+    descripcion: (g) => g.descripcion,
+    id: (g, m) => `${g.id}-${m}`,
+    detalle: (g) => g.categoria,
+  })
 
   return (
     <PageShell
@@ -121,44 +130,26 @@ export default function Gastos() {
         </div>
       }
     >
-      <ResumenCategorias etiquetaTotal={`Total gastos · ${etiquetaMes(mes)}`} total={total} data={porCategoria} />
-
-      <div className="mb-5 grid grid-cols-2 gap-4 sm:max-w-md">
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <div className="text-xs text-slate-500">Pagados</div>
-          <div className="mt-1 text-xl font-bold text-emerald-600 tabular">{money(pagado)}</div>
-        </div>
-        <div className={`rounded-xl border p-4 ${falta > 0 ? 'border-rose-200 bg-rose-50' : 'border-slate-200 bg-white'}`}>
-          <div className="text-xs text-slate-500">Falta pagar</div>
-          <div className={`mt-1 text-xl font-bold tabular ${falta > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-            {money(falta)}
+      {gastos.length > 0 && (
+        <div className="mb-5 grid grid-cols-2 gap-4 sm:max-w-md">
+          <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <div className="text-xs text-slate-500">Pagados · {etiquetaMes(mes)}</div>
+            <div className="mt-1 text-xl font-bold text-emerald-600 tabular">{money(pagado)}</div>
           </div>
-        </div>
-      </div>
-
-      {gastosDelMes.length > 0 && (
-        <div className="mb-3 flex gap-1">
-          {(['todos', 'fijo', 'variable'] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setFiltroTipo(t)}
-              className={`rounded-lg px-3 py-1.5 text-sm capitalize transition-colors ${
-                filtroTipo === t
-                  ? 'bg-brand-600 text-white'
-                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-              }`}
-            >
-              {t === 'todos' ? 'Todos' : t === 'fijo' ? 'Fijos' : 'Variables'}
-            </button>
-          ))}
+          <div className={`rounded-xl border p-4 ${falta > 0 ? 'border-rose-200 bg-rose-50' : 'border-slate-200 bg-white'}`}>
+            <div className="text-xs text-slate-500">Falta pagar</div>
+            <div className={`mt-1 text-xl font-bold tabular ${falta > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+              {money(falta)}
+            </div>
+          </div>
         </div>
       )}
 
-      {gastosDelMes.length === 0 ? (
+      {gastos.length === 0 ? (
         <EmptyState
           icon={Receipt}
-          titulo="Sin gastos este mes"
-          descripcion="No hay gastos para el mes seleccionado."
+          titulo="Sin gastos cargados"
+          descripcion="Cargá tus gastos y se organizan mes a mes."
           accion={
             <Button onClick={abrirNuevo}>
               <Plus size={18} /> Nuevo gasto
@@ -166,8 +157,34 @@ export default function Gastos() {
           }
         />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-          <table className="w-full min-w-[640px] text-sm">
+        <>
+        <SeccionColapsable
+          titulo={`Activos · ${etiquetaMes(mes)}`}
+          subtitulo={<span className="tabular">{money(total)}</span>}
+        >
+          <div className="mb-3 flex gap-1">
+            {(['todos', 'fijo', 'variable'] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setFiltroTipo(t)}
+                className={`rounded-lg px-3 py-1.5 text-sm capitalize transition-colors ${
+                  filtroTipo === t
+                    ? 'bg-brand-600 text-white'
+                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                {t === 'todos' ? 'Todos' : t === 'fijo' ? 'Fijos' : 'Variables'}
+              </button>
+            ))}
+          </div>
+
+          {gastosDelMes.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-slate-200 p-4 text-sm text-slate-400">
+              Sin gastos en {etiquetaMes(mes)}. Cambiá de mes con las flechas o agregá uno nuevo.
+            </p>
+          ) : (
+          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+            <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
                 <th className="px-4 py-3 font-medium">Pago</th>
@@ -259,7 +276,12 @@ export default function Gastos() {
               })}
             </tbody>
           </table>
-        </div>
+          </div>
+          )}
+        </SeccionColapsable>
+
+        <PagadosPorMes grupos={pagadosPorMes} titulo="Pagados por mes" tituloPopup="Gastos pagados" />
+        </>
       )}
 
       <Modal

@@ -27,6 +27,7 @@ import MoneyInput from '@/components/ui/MoneyInput'
 import { Campo, TextInput, Select, Checkbox } from '@/components/ui/Form'
 import BotonAdjuntos from '@/components/BotonAdjuntos'
 import MonthNav from '@/components/ui/MonthNav'
+import SeccionColapsable from '@/components/ui/SeccionColapsable'
 import { tarjetasRepo, comprasRepo } from '@/db/repos/tarjetas'
 import { serviciosRepo } from '@/db/repos/servicios'
 import { useConfigStore } from '@/store/configStore'
@@ -394,11 +395,18 @@ export default function Tarjetas() {
   const faltaPeriodo = totalPeriodo - pagadoPeriodo
   const periodoTotalmentePagado = tarjetaSel ? resumenPagado(tarjetaSel.id!, mesDetalle) : false
 
-  const tablaCompras = (lista: CompraTarjeta[], titulo: string, seleccionable: boolean) => (
-    <div className="mt-4">
-      <h3 className="mb-2 text-sm font-semibold text-slate-500">
-        {titulo} ({lista.length})
-      </h3>
+  const tablaCompras = (
+    lista: CompraTarjeta[],
+    titulo: string,
+    seleccionable: boolean,
+    sinTitulo = false,
+  ) => (
+    <div className={sinTitulo ? '' : 'mt-4'}>
+      {!sinTitulo && (
+        <h3 className="mb-2 text-sm font-semibold text-slate-500">
+          {titulo} ({lista.length})
+        </h3>
+      )}
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="w-full min-w-[720px] text-sm">
           <thead>
@@ -797,7 +805,24 @@ export default function Tarjetas() {
             />
           ) : (
             <>
-              {activas.length > 0 && tablaCompras(activas, 'Activas', true)}
+              {activas.length > 0 && (
+                <SeccionColapsable
+                  titulo={`Activas (${activas.length})`}
+                  subtitulo={
+                    <span className="tabular">
+                      Pendiente{' '}
+                      {money(
+                        activas.reduce(
+                          (a, c) => a + (c.servicioRecurrente ? 0 : resumenCompra(c, mesRef).totalPendiente),
+                          0,
+                        ),
+                      )}
+                    </span>
+                  }
+                >
+                  {tablaCompras(activas, 'Activas', true, true)}
+                </SeccionColapsable>
+              )}
               {finalizadas.length > 0 && (
                 <div className="mt-6">
                   <h3 className="mb-2 text-sm font-semibold text-slate-500">
