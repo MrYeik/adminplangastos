@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Plus, Pencil, Trash2, Landmark, ListChecks, CheckCircle2, Circle, X } from 'lucide-react'
+import { Plus, Pencil, Trash2, Landmark, CheckCircle2, Circle, X } from 'lucide-react'
 import PageShell from '@/components/PageShell'
 import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
@@ -216,9 +216,9 @@ export default function Prestamos() {
                       </td>
                       <td className="px-4 py-3">
                         <button
-                          onClick={() => togglePagoCuota(p, mes)}
+                          onClick={() => setVerCuotasDe(p)}
                           className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs ${pagada ? 'text-emerald-600' : 'text-slate-400'} hover:bg-slate-100`}
-                          title={pagada ? `Cuota pagada en ${etiquetaMes(mes)} (tocá para desmarcar)` : `Marcar cuota pagada en ${etiquetaMes(mes)}`}
+                          title={`Ver y marcar las cuotas por mes (${pagada ? `pagada en ${etiquetaMes(mes)}` : `${etiquetaMes(mes)} pendiente`})`}
                         >
                           {pagada ? <CheckCircle2 size={16} /> : <Circle size={16} />}
                           {pagada ? 'Pagada' : 'Pendiente'}
@@ -232,14 +232,6 @@ export default function Prestamos() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex justify-end gap-1">
-                          <button
-                            onClick={() => setVerCuotasDe(p)}
-                            className="rounded-lg p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"
-                            aria-label="Ver cuotas por mes"
-                            title="Ver todas las cuotas (pagadas y pendientes) y cargar el valor real"
-                          >
-                            <ListChecks size={16} />
-                          </button>
                           <BotonAdjuntos entidadTipo="prestamo" entidadId={p.id!} titulo={`Contratos · ${p.entidad}`} />
                           <button
                             onClick={() => editar(p)}
@@ -423,7 +415,14 @@ export default function Prestamos() {
                       return (
                         <tr key={f.nro} className={`border-b border-slate-100 last:border-0 ${f.pagada ? 'bg-emerald-50/40' : esPasado ? 'bg-rose-50/30' : ''}`}>
                           <td className="px-3 py-2 text-slate-500">Cuota {f.nro}</td>
-                          <td className="px-3 py-2 capitalize text-slate-700">{etiquetaMes(f.mes, true)}</td>
+                          <td className="px-3 py-2 capitalize text-slate-700">
+                            {etiquetaMes(f.mes, true)}
+                            {f.mes === mes && (
+                              <span className="ml-1 rounded bg-brand-50 px-1 text-[10px] font-medium normal-case text-brand-700">
+                                este mes
+                              </span>
+                            )}
+                          </td>
                           <td className="px-3 py-2 text-right">
                             {editCuotaMes === f.mes ? (
                               <div className="flex items-center justify-end gap-1">
