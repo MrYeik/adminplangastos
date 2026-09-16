@@ -1024,18 +1024,31 @@ export default function Tarjetas() {
                 </p>
               )}
             </Campo>
-            <div className="grid grid-cols-2 gap-4">
-              <Campo label="Cantidad de cuotas" requerido>
-                <TextInput
-                  type="number"
-                  min={1}
-                  value={formCompra.cantidadCuotas}
-                  onChange={(e) =>
-                    setFormCompra({ ...formCompra, cantidadCuotas: Number(e.target.value) })
-                  }
-                />
-              </Campo>
-              <Campo label={formCompra.moneda === 'USD' ? 'Importe por cuota (US$)' : 'Importe por cuota'} requerido>
+            <div className={formCompra.servicioRecurrente ? '' : 'grid grid-cols-2 gap-4'}>
+              {!formCompra.servicioRecurrente && (
+                <Campo label="Cantidad de cuotas" requerido>
+                  <TextInput
+                    type="number"
+                    min={1}
+                    value={formCompra.cantidadCuotas}
+                    onChange={(e) =>
+                      setFormCompra({ ...formCompra, cantidadCuotas: Number(e.target.value) })
+                    }
+                  />
+                </Campo>
+              )}
+              <Campo
+                label={
+                  formCompra.servicioRecurrente
+                    ? formCompra.moneda === 'USD'
+                      ? 'Importe por mes (US$)'
+                      : 'Importe por mes'
+                    : formCompra.moneda === 'USD'
+                      ? 'Importe por cuota (US$)'
+                      : 'Importe por cuota'
+                }
+                requerido
+              >
                 <MoneyInput
                   value={formCompra.importePorCuota}
                   onChange={(importePorCuota) => setFormCompra({ ...formCompra, importePorCuota })}
@@ -1043,7 +1056,17 @@ export default function Tarjetas() {
               </Campo>
             </div>
 
-            {formCompra.moneda === 'USD' ? (
+            {formCompra.servicioRecurrente ? (
+              <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
+                Cargo mensual:{' '}
+                <strong className="text-slate-900">
+                  {formCompra.moneda === 'USD' && promedioUsd
+                    ? money(convertirUsdAArs(formCompra.importePorCuota, promedioUsd))
+                    : money(formCompra.importePorCuota)}
+                </strong>{' '}
+                <span className="text-slate-400">por mes · se repite sin fecha de fin</span>
+              </div>
+            ) : formCompra.moneda === 'USD' ? (
               <div className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">
                 Total en dólares:{' '}
                 <strong>u$s {((formCompra.cantidadCuotas * formCompra.importePorCuota) / 100).toFixed(2)}</strong>
@@ -1085,33 +1108,47 @@ export default function Tarjetas() {
               />
             </Campo>
 
-            <div className="rounded-lg border border-slate-200 p-3">
-              <Checkbox
-                label="Es un servicio (mostrarlo en la pestaña Servicios)"
-                checked={formCompra.esServicio ?? false}
-                onChange={(e) => setFormCompra({ ...formCompra, esServicio: e.target.checked })}
-              />
-              {formCompra.esServicio && (
-                <div className="mt-3 grid grid-cols-2 gap-4">
-                  <Campo label="Categoría">
-                    <Select
-                      value={formCompra.categoriaServicio ?? (config?.categorias?.[0] ?? 'Servicios')}
-                      onChange={(e) => setFormCompra({ ...formCompra, categoriaServicio: e.target.value })}
-                    >
-                      {(config?.categorias ?? []).map((c) => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </Select>
-                  </Campo>
-                  <div className="flex items-end pb-2">
-                    <Checkbox
-                      label="Se repite todos los meses"
-                      checked={formCompra.servicioRecurrente ?? false}
-                      onChange={(e) => setFormCompra({ ...formCompra, servicioRecurrente: e.target.checked })}
-                    />
+            <div className="space-y-3 rounded-lg border border-slate-200 p-3">
+              <div>
+                <Checkbox
+                  label="Se repite todos los meses (cargo fijo, impuesto, mantenimiento…)"
+                  checked={formCompra.servicioRecurrente ?? false}
+                  onChange={(e) =>
+                    setFormCompra({
+                      ...formCompra,
+                      servicioRecurrente: e.target.checked,
+                      // un cargo recurrente no lleva cuotas
+                      cantidadCuotas: e.target.checked ? 1 : formCompra.cantidadCuotas,
+                    })
+                  }
+                />
+                {formCompra.servicioRecurrente && (
+                  <p className="mt-1 text-xs text-slate-400">
+                    Se cobra el mismo importe todos los meses en la tarjeta, sin cuotas ni fecha de fin.
+                  </p>
+                )}
+              </div>
+              <div>
+                <Checkbox
+                  label="Es un servicio (mostrarlo en la pestaña Servicios)"
+                  checked={formCompra.esServicio ?? false}
+                  onChange={(e) => setFormCompra({ ...formCompra, esServicio: e.target.checked })}
+                />
+                {formCompra.esServicio && (
+                  <div className="mt-2">
+                    <Campo label="Categoría">
+                      <Select
+                        value={formCompra.categoriaServicio ?? (config?.categorias?.[0] ?? 'Servicios')}
+                        onChange={(e) => setFormCompra({ ...formCompra, categoriaServicio: e.target.value })}
+                      >
+                        {(config?.categorias ?? []).map((c) => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </Select>
+                    </Campo>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
