@@ -170,7 +170,7 @@ export default function Guia() {
         {PASOS.map((p, i) => (
           <li key={i} className="rounded-xl border border-slate-200 bg-white p-5">
             <div className="flex flex-wrap items-start gap-4">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-900 text-sm font-bold text-white">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-600 text-sm font-bold text-white">
                 {i + 1}
               </span>
               <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${p.color}`}>

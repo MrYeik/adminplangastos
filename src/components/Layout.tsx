@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { useRecordatorios } from '@/store/useRecordatorios'
+import ToggleTema from '@/components/ToggleTema'
 import {
   LayoutDashboard,
   TrendingUp,
@@ -108,8 +109,9 @@ export default function Layout() {
             )
           })}
         </nav>
-        <div className="border-t border-slate-800 px-5 py-3 text-[11px] text-slate-500">
-          v0.1 · datos locales
+        <div className="border-t border-slate-800 px-3 py-3">
+          <ToggleTema />
+          <div className="px-2 pt-2 text-[11px] text-slate-500">v0.1 · datos locales</div>
         </div>
       </aside>
 
@@ -128,16 +130,19 @@ export default function Layout() {
           <div className="text-lg font-bold tracking-tight text-slate-900">
             Aura<span className="text-brand-500">+</span>
           </div>
-          {recordatorios.length > 0 && (
-            <NavLink
-              to="/recordatorios"
-              onClick={cerrarMenu}
-              className="ml-auto flex items-center gap-1 rounded-full bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-600"
-            >
-              <Bell size={14} />
-              {recordatorios.length}
-            </NavLink>
-          )}
+          <div className="ml-auto flex items-center gap-1">
+            {recordatorios.length > 0 && (
+              <NavLink
+                to="/recordatorios"
+                onClick={cerrarMenu}
+                className="flex items-center gap-1 rounded-full bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-600"
+              >
+                <Bell size={14} />
+                {recordatorios.length}
+              </NavLink>
+            )}
+            <ToggleTema variante="topbar" />
+          </div>
         </header>
 
         <main className="flex-1 overflow-x-auto pb-[env(safe-area-inset-bottom)]">

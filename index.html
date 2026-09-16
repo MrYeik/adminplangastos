@@ -9,6 +9,18 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Aura+" />
+    <script>
+      // Aplica el tema antes de pintar para evitar parpadeo (claro→oscuro).
+      (function () {
+        try {
+          var t = localStorage.getItem('aura-tema') || 'auto'
+          var dark =
+            t === 'oscuro' ||
+            (t === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+          if (dark) document.documentElement.classList.add('dark')
+        } catch (e) {}
+      })()
+    </script>
     <title>Aura+ — Finanzas del Hogar</title>
   </head>
   <body>

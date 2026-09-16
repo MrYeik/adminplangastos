@@ -23,7 +23,7 @@ export default function Modal({ abierto, titulo, onCerrar, children, ancho = 'ma
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/40 p-4 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/60 p-4 overflow-y-auto"
       onMouseDown={onCerrar}
     >
       <div

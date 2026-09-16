@@ -28,3 +28,109 @@ body {
 .tabular {
   font-variant-numeric: tabular-nums;
 }
+
+/* ==========================================================================
+   Modo oscuro (nocturno)
+   Estrategia: se redefinen las variables de color de Tailwind bajo :root.dark.
+   Como las utilidades v4 usan var(--color-*), invertir la rampa neutra (slate)
+   y adaptar superficies/tintes/textos cambia TODA la app sin tocar cada archivo.
+   ========================================================================== */
+:root.dark {
+  color-scheme: dark;
+
+  /* Rampa neutra invertida (fondo oscuro ↔ texto claro) */
+  --color-slate-50: #0f172a;   /* base / cabeceras de tabla (recesado) */
+  --color-slate-100: #273449;  /* hover sobre tarjetas */
+  --color-slate-200: #334155;  /* bordes */
+  --color-slate-300: #3f4d63;  /* bordes de inputs */
+  --color-slate-400: #64748b;  /* íconos tenues */
+  --color-slate-500: #94a3b8;  /* texto atenuado */
+  --color-slate-600: #cbd5e1;  /* texto secundario */
+  --color-slate-700: #e2e8f0;  /* cuerpo */
+  --color-slate-800: #f1f5f9;  /* títulos */
+  --color-slate-900: #f8fafc;  /* títulos fuertes */
+
+  /* Tintes de acento (-50/-100) como lavados oscuros sobre la base */
+  --color-brand-50: color-mix(in oklab, var(--color-brand-500) 22%, #0f172a);
+  --color-brand-100: color-mix(in oklab, var(--color-brand-500) 32%, #0f172a);
+  --color-emerald-50: color-mix(in oklab, var(--color-emerald-500) 22%, #0f172a);
+  --color-emerald-100: color-mix(in oklab, var(--color-emerald-500) 32%, #0f172a);
+  --color-rose-50: color-mix(in oklab, var(--color-rose-500) 22%, #0f172a);
+  --color-rose-100: color-mix(in oklab, var(--color-rose-500) 32%, #0f172a);
+  --color-amber-50: color-mix(in oklab, var(--color-amber-500) 22%, #0f172a);
+  --color-amber-100: color-mix(in oklab, var(--color-amber-500) 32%, #0f172a);
+  --color-cyan-50: color-mix(in oklab, var(--color-cyan-500) 22%, #0f172a);
+  --color-cyan-100: color-mix(in oklab, var(--color-cyan-500) 32%, #0f172a);
+  --color-indigo-50: color-mix(in oklab, var(--color-indigo-500) 22%, #0f172a);
+  --color-indigo-100: color-mix(in oklab, var(--color-indigo-500) 32%, #0f172a);
+  --color-teal-50: color-mix(in oklab, var(--color-teal-500) 22%, #0f172a);
+  --color-teal-100: color-mix(in oklab, var(--color-teal-500) 32%, #0f172a);
+  --color-orange-50: color-mix(in oklab, var(--color-orange-500) 22%, #0f172a);
+  --color-orange-100: color-mix(in oklab, var(--color-orange-500) 32%, #0f172a);
+  --color-violet-50: color-mix(in oklab, var(--color-violet-500) 22%, #0f172a);
+  --color-violet-100: color-mix(in oklab, var(--color-violet-500) 32%, #0f172a);
+  --color-blue-50: color-mix(in oklab, var(--color-blue-500) 22%, #0f172a);
+  --color-blue-100: color-mix(in oklab, var(--color-blue-500) 32%, #0f172a);
+  --color-yellow-50: color-mix(in oklab, var(--color-yellow-500) 22%, #0f172a);
+  --color-yellow-100: color-mix(in oklab, var(--color-yellow-500) 32%, #0f172a);
+  --color-sky-50: color-mix(in oklab, var(--color-sky-500) 22%, #0f172a);
+  --color-sky-100: color-mix(in oklab, var(--color-sky-500) 32%, #0f172a);
+  --color-red-50: color-mix(in oklab, var(--color-red-500) 22%, #0f172a);
+  --color-red-100: color-mix(in oklab, var(--color-red-500) 32%, #0f172a);
+  --color-green-50: color-mix(in oklab, var(--color-green-500) 22%, #0f172a);
+  --color-green-100: color-mix(in oklab, var(--color-green-500) 32%, #0f172a);
+
+  /* Textos de acento oscuros (-700/-800) → tonos claros legibles sobre el lavado.
+     Ninguno de estos tonos se usa como fondo sólido (rose queda excluido). */
+  --color-emerald-700: var(--color-emerald-300); --color-emerald-800: var(--color-emerald-200);
+  --color-amber-700: var(--color-amber-300);     --color-amber-800: var(--color-amber-200);
+  --color-cyan-700: var(--color-cyan-300);       --color-cyan-800: var(--color-cyan-200);
+  --color-indigo-700: var(--color-indigo-300);   --color-indigo-800: var(--color-indigo-200);
+  --color-teal-700: var(--color-teal-300);       --color-teal-800: var(--color-teal-200);
+  --color-orange-700: var(--color-orange-300);   --color-orange-800: var(--color-orange-200);
+  --color-violet-700: var(--color-violet-300);   --color-violet-800: var(--color-violet-200);
+  --color-blue-700: var(--color-blue-300);       --color-blue-800: var(--color-blue-200);
+  --color-yellow-700: var(--color-yellow-300);   --color-yellow-800: var(--color-yellow-200);
+  --color-sky-700: var(--color-sky-300);         --color-sky-800: var(--color-sky-200);
+  --color-red-700: var(--color-red-300);         --color-red-800: var(--color-red-200);
+  --color-green-700: var(--color-green-300);     --color-green-800: var(--color-green-200);
+}
+
+/* Superficie de tarjetas: bg-white → superficie elevada oscura.
+   Se sobreescribe la utilidad (no la variable --color-white) para no afectar text-white. */
+:root.dark .bg-white {
+  background-color: #1e293b;
+}
+:root.dark body {
+  background-color: #0f172a;
+  color: #e2e8f0;
+}
+
+/* La barra lateral se mantiene oscura en ambos temas: dentro del <aside>
+   se restaura la rampa "clara" de slate para que bg-slate-900 siga oscuro
+   y el texto claro. */
+:root.dark aside {
+  --color-slate-50: #f8fafc;
+  --color-slate-100: #f1f5f9;
+  --color-slate-200: #e2e8f0;
+  --color-slate-300: #cbd5e1;
+  --color-slate-400: #94a3b8;
+  --color-slate-500: #64748b;
+  --color-slate-600: #475569;
+  --color-slate-700: #334155;
+  --color-slate-800: #1e293b;
+  --color-slate-900: #0f172a;
+}
+
+/* Gráficos (Recharts) en modo oscuro */
+:root.dark .recharts-text {
+  fill: #94a3b8;
+}
+:root.dark .recharts-cartesian-grid line {
+  stroke: #334155;
+}
+:root.dark .recharts-default-tooltip {
+  background-color: #1e293b !important;
+  border-color: #334155 !important;
+  color: #f1f5f9 !important;
+}
