@@ -70,9 +70,21 @@ function Kpi({
 }
 
 const TONOS: Record<string, { bg: string; text: string; icon: string }> = {
-  emerald: { bg: 'from-emerald-50 to-white ring-emerald-100', text: 'text-emerald-700', icon: 'text-emerald-600' },
-  rose: { bg: 'from-rose-50 to-white ring-rose-100', text: 'text-rose-700', icon: 'text-rose-600' },
-  brand: { bg: 'from-brand-50 to-white ring-brand-100', text: 'text-brand-700', icon: 'text-brand-600' },
+  emerald: {
+    bg: 'from-emerald-50 to-white ring-emerald-100 dark:ring-emerald-500/25',
+    text: 'text-emerald-700 dark:text-emerald-300',
+    icon: 'text-emerald-600 dark:text-emerald-400',
+  },
+  rose: {
+    bg: 'from-rose-50 to-white ring-rose-100 dark:ring-rose-500/25',
+    text: 'text-rose-700 dark:text-rose-300',
+    icon: 'text-rose-600 dark:text-rose-400',
+  },
+  brand: {
+    bg: 'from-brand-50 to-white ring-brand-100 dark:ring-brand-500/25',
+    text: 'text-brand-700 dark:text-brand-300',
+    icon: 'text-brand-600 dark:text-brand-400',
+  },
 }
 
 function MainKpi({

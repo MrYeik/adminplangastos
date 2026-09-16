@@ -1,5 +1,8 @@
 @import 'tailwindcss';
 
+/* Modo oscuro por clase (.dark en :root), no por prefers-color-scheme. */
+@custom-variant dark (&:where(:root.dark, :root.dark *));
+
 @theme {
   --color-brand-50: #f0fdfa;
   --color-brand-100: #ccfbf1;
@@ -104,6 +107,12 @@ body {
 :root.dark body {
   background-color: #0f172a;
   color: #e2e8f0;
+}
+
+/* Degradados que terminan en blanco (tarjetas KPI del Dashboard, etc.):
+   en modo oscuro terminan en la superficie oscura, no en blanco puro. */
+:root.dark .to-white {
+  --tw-gradient-to: #1e293b;
 }
 
 /* La barra lateral se mantiene oscura en ambos temas: dentro del <aside>
