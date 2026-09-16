@@ -46,7 +46,7 @@ body {
   --color-slate-100: #273449;  /* hover sobre tarjetas */
   --color-slate-200: #334155;  /* bordes */
   --color-slate-300: #3f4d63;  /* bordes de inputs */
-  --color-slate-400: #64748b;  /* íconos tenues */
+  --color-slate-400: #8a97ab;  /* texto/íconos secundarios (legible en oscuro) */
   --color-slate-500: #94a3b8;  /* texto atenuado */
   --color-slate-600: #cbd5e1;  /* texto secundario */
   --color-slate-700: #e2e8f0;  /* cuerpo */
@@ -115,6 +115,26 @@ body {
   --tw-gradient-to: #1e293b;
 }
 
+/* rose y brand quedan fuera del aclarado de acentos por sus fondos sólidos
+   (bg-rose-700 peligro, bg-brand-700 hover del botón primario): se aclara
+   SOLO la utilidad de texto, sin tocar esos fondos. */
+:root.dark .text-rose-700 {
+  color: var(--color-rose-300);
+}
+:root.dark .text-rose-800 {
+  color: var(--color-rose-200);
+}
+:root.dark .text-brand-700 {
+  color: var(--color-brand-300);
+}
+:root.dark .text-brand-800 {
+  color: var(--color-brand-200);
+}
+/* slate-300 como TEXTO tenue debe ser claro (la variable se usa para bordes). */
+:root.dark .text-slate-300 {
+  color: #cbd5e1;
+}
+
 /* La barra lateral se mantiene oscura en ambos temas: dentro del <aside>
    se restaura la rampa "clara" de slate para que bg-slate-900 siga oscuro
    y el texto claro. */
@@ -137,6 +157,9 @@ body {
 }
 :root.dark .recharts-cartesian-grid line {
   stroke: #334155;
+}
+:root.dark .recharts-legend-item-text {
+  color: #cbd5e1 !important;
 }
 :root.dark .recharts-default-tooltip {
   background-color: #1e293b !important;
